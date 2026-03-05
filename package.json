@@ -4,12 +4,26 @@
   "version": "0.1.0",
   "type": "module",
   "scripts": {
-    "dev": "start /B node dev-server.mjs && vite",
+    "dev": "node dev-server.mjs & vite",
     "dev:api": "node dev-server.mjs",
     "dev:vercel": "vercel dev",
     "build": "tsc && vite build",
     "preview": "vite preview",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "tasks:list": "node scripts/task-queue.mjs list",
+    "tasks:next": "node scripts/task-queue.mjs next --agent copilot",
+    "tasks:next:claude": "node scripts/task-queue.mjs next --agent claude",
+    "tasks:done": "node scripts/task-queue.mjs done",
+    "tasks:add": "node scripts/task-queue.mjs add",
+    "tasks:note": "node scripts/task-queue.mjs note",
+    "tasks:block": "node scripts/task-queue.mjs block",
+    "tasks:release": "node scripts/task-queue.mjs release",
+    "tasks:sync": "node scripts/task-queue.mjs sync",
+    "tasks:loop": "node scripts/task-loop.mjs --agent copilot --work \"\" --test \"npm run typecheck; npm run build\"",
+    "tasks:loop:claude": "node scripts/task-loop.mjs --agent claude --work \"\" --test \"npm run typecheck; npm run build\"",
+    "tasks:loop:ux": "node scripts/task-loop.mjs --agent copilot --work \"\" --test \"npm run typecheck; npm run build; node tmp-smoke-playwright.mjs\"",
+    "tasks:loop:ux:claude": "node scripts/task-loop.mjs --agent claude --work \"\" --test \"npm run typecheck; npm run build; node tmp-smoke-playwright.mjs\"",
+    "tasks:loop:dry": "node scripts/task-loop.mjs --agent copilot --dry-run --max 1"
   },
   "dependencies": {
     "@upstash/ratelimit": "^2.0.8",
