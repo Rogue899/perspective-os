@@ -1,0 +1,90 @@
+/**
+ * RSS Service
+ * Fetches and parses RSS feeds through the /api/rss-proxy edge function.
+ * Returns normalized RawArticle arrays.
+ */
+
+import type { RawArticle } from '../types';
+import { SOURCE_MAP } from '../config/sources';
+
+const FEED_CACHE = new Map<string, { articles: RawArticle[]; fetchedAt: number }>();
+const CACHE_TTL = 5 * 60 * 1000; // 5 min client-side cache
+
+export async function fetchFeed(sourceId: string): Promise<RawArticle[]> {
+  const source = SOURCE_MAP.get(sourceId);
+  if (!source) return [];
+
+  // Check client-side cache first
+  const cached = FEED_CACHE.get(sourceId);
+  if (cached && Date.now() - cached.fetchedAt < CACHE_TTL) {
+    return cached.articles;
+  }
+
+  try {
+    const res = await fetch(source.rss, {
+      headers: { 'Accept': 'application/rss+xml, application/xml, text/xml' },
+    });
+    if (!res.ok) throw new Error(`RSS ${res.status} for ${sourceId}`);
+    const xml = await res.text();
+    const articles = parseRSS(xml, sourceId, source.name);
+
+    FEED_CACHE.set(sourceId, { articles, fetchedAt: Date.now() });
+    return articles;
+  } catch (err) {
+    console.warn(`[RSS] Failed to fetch ${sourceId}:`, err);
+    return FEED_CACHE.get(sourceId)?.articles ?? [];
+  }
+}
+
+export async function fetchAllFeeds(sourceIds: string[]): Promise<RawArticle[]> {
+  const results = await Promise.allSettled(sourceIds.map(id => fetchFeed(id)));
+  return results
+    .filter((r): r is PromiseFulfilledResult<RawArticle[]> => r.status === 'fulfilled')
+    .flatMap(r => r.value)
+    .sort((a, b) => b.publishedAt.getTime() - a.publishedAt.getTime());
+}
+
+function parseRSS(xml: string, sourceId: string, sourceName: string): RawArticle[] {
+  try {
+    const parser = new DOMParser();
+    const doc = parser.parseFromString(xml, 'text/xml');
+    const parserError = doc.querySelector('parsererror');
+    if (parserError) throw new Error('XML parse error');
+
+    // Support both RSS 2.0 and Atom
+    const isAtom = doc.querySelector('feed') !== null;
+    const items = isAtom
+      ? Array.from(doc.querySelectorAll('entry'))
+      : Array.from(doc.querySelectorAll('item'));
+
+    return items.slice(0, 25).map(item => {
+      const get = (tag: string) => item.querySelector(tag)?.textContent?.trim() ?? '';
+
+      const title = get('title');
+      const description = stripHtml(get('description') || get('summary') || get('content'));
+      const url = isAtom
+        ? item.querySelector('link')?.getAttribute('href') ?? get('link')
+        : get('link') || item.querySelector('link')?.textContent ?? '';
+      const pubStr = get('pubDate') || get('published') || get('updated');
+      const publishedAt = pubStr ? new Date(pubStr) : new Date();
+
+      return {
+        sourceId,
+        sourceName,
+        title: stripHtml(title),
+        description: description.slice(0, 600),
+        url: url.trim(),
+        publishedAt: isNaN(publishedAt.getTime()) ? new Date() : publishedAt,
+      } satisfies RawArticle;
+    }).filter(a => a.title && a.url);
+  } catch (err) {
+    console.warn(`[RSS] Parse error for ${sourceId}:`, err);
+    return [];
+  }
+}
+
+function stripHtml(html: string): string {
+  const div = document.createElement('div');
+  div.innerHTML = html;
+  return div.textContent?.replace(/\s+/g, ' ').trim() ?? '';
+}

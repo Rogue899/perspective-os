@@ -1,0 +1,24 @@
+{
+  "rewrites": [
+    { "source": "/api/rss-proxy", "destination": "/api/rss-proxy.js" },
+    { "source": "/api/ai",        "destination": "/api/ai.js" },
+    { "source": "/api/gdelt/:path*", "destination": "/api/gdelt.js" },
+    { "source": "/api/acled",    "destination": "/api/acled.js" },
+    { "source": "/api/embed",    "destination": "/api/embed.js" }
+  ],
+  "headers": [
+    {
+      "source": "/(.*)",
+      "headers": [
+        { "key": "X-Content-Type-Options", "value": "nosniff" },
+        { "key": "X-Frame-Options",        "value": "DENY" },
+        { "key": "Referrer-Policy",        "value": "strict-origin-when-cross-origin" }
+      ]
+    }
+  ],
+  "functions": {
+    "api/*.js": {
+      "runtime": "edge"
+    }
+  }
+}
