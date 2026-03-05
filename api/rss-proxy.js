@@ -14,7 +14,27 @@ const ALLOWED_DOMAINS = [
   'www.arabnews.com', 'www.middleeasteye.net', 'www.haaretz.com',
   'www.timesofisrael.com', 'www.presstv.ir', 'www.bellingcat.com',
   'theintercept.com', 'www.thehindu.com', 'nypost.com',
-  'rsshub.app', // RSSHub public instance
+  // Fixed/new sources
+  'news.yahoo.com',        // Reuters/Yahoo RSS world feed
+  'news.google.com',       // Google News RSS
+  'www.theguardian.com',   // The Guardian (replaces AP rsshub)
+  'english.news.cn',       // Xinhua English
+  'www.xinhuanet.com',     // Xinhua alternate domain
+  'www.jpost.com',         // Jerusalem Post (replaces paywalled Haaretz)
+  'www.alarabiya.net',     // Al Arabiya
+  'english.alarabiya.net', // Al Arabiya English subdomain
+  'www.globaltimes.cn',    // Global Times (Chinese state, hawkish perspective)
+  'rss.chinadaily.com.cn', // China Daily RSS
+  'www.channelnewsasia.com', // CNA — Singapore, good Asia/MENA coverage
+  'www.al-monitor.com',    // Al-Monitor — Middle East specialist
+  'feeds.npr.org',         // NPR World
+  'nitter.net',            // X/Twitter mirror RSS
+  'www.reddit.com',        // Reddit community/local feeds
+  'www.mtv.com.lb',        // MTV Lebanon local feed
+  'www.whitehouse.gov',    // U.S. White House
+  'www.gov.uk',            // UK government feeds
+  'rsshub.app',            // RSSHub public instance
+  'rsshub.rssforever.com', // RSSHub mirror
 ];
 
 export const config = { runtime: 'edge' };

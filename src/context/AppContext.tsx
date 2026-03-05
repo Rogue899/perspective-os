@@ -38,6 +38,7 @@ const DEFAULT_SETTINGS: AppSettings = {
   openSkyPass:          '',
   upstashUrl:           '',
   upstashToken:         '',
+  localMediaSources:    [],
   enabledSources:       NEWS_SOURCES.map(s => s.id),
   enableMap:            true,
   enableConflictLayer:  true,
@@ -86,7 +87,18 @@ function reducer(state: AppState, action: Action): AppState {
     case 'SELECT_CLUSTER':
       return { ...state, selectedCluster: action.payload };
     case 'UPDATE_SETTINGS': {
-      const next = { ...state.settings, ...action.payload };
+      const next = {
+        ...state.settings,
+        ...action.payload,
+        geminiKey: '',
+        groqKey: '',
+        acledKey: '',
+        nasaFirmsKey: '',
+        openSkyUser: '',
+        openSkyPass: '',
+        upstashUrl: '',
+        upstashToken: '',
+      };
       try { localStorage.setItem('pos-settings', JSON.stringify(next)); } catch {}
       return { ...state, settings: next };
     }

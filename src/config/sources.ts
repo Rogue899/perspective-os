@@ -1,4 +1,4 @@
-import type { NewsSource } from '../types';
+import type { LocalMediaSource, NewsSource } from '../types';
 
 export const NEWS_SOURCES: NewsSource[] = [
   // ── Western Liberal ──────────────────────────────────────────────────────
@@ -10,6 +10,8 @@ export const NEWS_SOURCES: NewsSource[] = [
     lean: -1,
     region: 'Europe',
     country: 'UK',
+    tier: 'tier1',
+    sourceType: 'mainstream',
     rss: '/api/rss-proxy?url=https://feeds.bbci.co.uk/news/world/rss.xml&id=bbc',
     description: 'UK public broadcaster. Center-left, Western framing. Credible but reflects British foreign policy alignment.',
   },
@@ -21,6 +23,8 @@ export const NEWS_SOURCES: NewsSource[] = [
     lean: -1,
     region: 'Europe',
     country: 'France',
+    tier: 'tier1',
+    sourceType: 'mainstream',
     rss: '/api/rss-proxy?url=https://www.france24.com/en/rss&id=france24',
     description: 'French international broadcaster. Pro-EU, Western liberal. Strong Africa and MENA coverage.',
   },
@@ -32,19 +36,23 @@ export const NEWS_SOURCES: NewsSource[] = [
     lean: -1,
     region: 'Europe',
     country: 'Germany',
-    rss: '/api/rss-proxy?url=https://rss.dw.com/rdf/rss-en-all&id=dw',
+    tier: 'tier1',
+    sourceType: 'mainstream',
+    rss: '/api/rss-proxy?url=https://rss.dw.com/atom/rss-en-all&id=dw',
     description: 'German public international broadcaster. Reliable, center-left, strong human rights focus.',
   },
   {
     id: 'apnews',
-    name: 'AP News',
+    name: 'AP / Guardian',
     bias: 'center',
     biasColor: 'center',
     lean: 0,
     region: 'Global',
     country: 'USA',
-    rss: '/api/rss-proxy?url=https://rsshub.app/apnews/topics/ap-top-news&id=apnews',
-    description: 'Associated Press wire service. Most neutral major outlet. Widely syndicated.',
+    tier: 'tier1',
+    sourceType: 'mainstream',
+    rss: '/api/rss-proxy?url=https://www.theguardian.com/world/rss&id=apnews',
+    description: 'The Guardian World feed — center-left, internationally respected, clean RSS. Solid factual baseline.',
   },
   {
     id: 'reuters',
@@ -54,8 +62,10 @@ export const NEWS_SOURCES: NewsSource[] = [
     lean: 0,
     region: 'Global',
     country: 'UK',
-    rss: '/api/rss-proxy?url=https://feeds.reuters.com/reuters/topNews&id=reuters',
-    description: 'Global wire service. Considered most factual. Financial sector lean.',
+    tier: 'tier1',
+    sourceType: 'mainstream',
+    rss: '/api/rss-proxy?url=https://news.yahoo.com/rss/world&id=reuters',
+    description: 'Reuters/Yahoo world news RSS. Wire service aggregation. Most neutral major feed.',
   },
 
   // ── US Right ─────────────────────────────────────────────────────────────
@@ -67,6 +77,8 @@ export const NEWS_SOURCES: NewsSource[] = [
     lean: 3,
     region: 'Americas',
     country: 'USA',
+    tier: 'tier2',
+    sourceType: 'mainstream',
     rss: '/api/rss-proxy?url=https://moxie.foxnews.com/google-publisher/world.xml&id=foxnews',
     description: 'US right-wing cable news. Strong nationalist/conservative framing. High US domestic bias.',
   },
@@ -78,6 +90,8 @@ export const NEWS_SOURCES: NewsSource[] = [
     lean: 2,
     region: 'Americas',
     country: 'USA',
+    tier: 'tier2',
+    sourceType: 'mainstream',
     rss: '/api/rss-proxy?url=https://nypost.com/feed/&id=nypost',
     description: 'US tabloid-style center-right. Murdoch-owned. More sensational than ideological.',
   },
@@ -91,19 +105,23 @@ export const NEWS_SOURCES: NewsSource[] = [
     lean: -2,
     region: 'MENA',
     country: 'Qatar',
+    tier: 'tier1',
+    sourceType: 'state',
     rss: '/api/rss-proxy?url=https://www.aljazeera.com/xml/rss/all.xml&id=aljazeera',
     description: 'Qatar state-funded. Anti-Western, pro-Palestinian, pro-Muslim Brotherhood. Major voice in Arab world.',
   },
   {
     id: 'arabnews',
-    name: 'Arab News',
-    bias: 'gulf-aligned',
-    biasColor: 'gulf',
-    lean: 1,
+    name: 'Al-Monitor',
+    bias: 'center',
+    biasColor: 'center',
+    lean: 0,
     region: 'MENA',
-    country: 'Saudi Arabia',
-    rss: '/api/rss-proxy?url=https://www.arabnews.com/rss.xml&id=arabnews',
-    description: 'Saudi-aligned English outlet. Pro-MBS, anti-Iran, anti-Qatar. Gulf conservative.',
+    country: 'USA',
+    tier: 'tier2',
+    sourceType: 'independent',
+    rss: '/api/rss-proxy?url=https://www.al-monitor.com/rss&id=arabnews',
+    description: 'Al-Monitor — Independent Middle East news. Expert analysis, used by diplomats. No state funding, evidence-based.',
   },
   {
     id: 'mee',
@@ -113,6 +131,8 @@ export const NEWS_SOURCES: NewsSource[] = [
     lean: -2,
     region: 'MENA',
     country: 'UK',
+    tier: 'tier2',
+    sourceType: 'independent',
     rss: '/api/rss-proxy?url=https://www.middleeasteye.net/rss&id=mee',
     description: 'UK-based. Strong pro-Palestinian, often sympathetic to Muslim Brotherhood. Qatar-linked funding reported.',
   },
@@ -120,14 +140,16 @@ export const NEWS_SOURCES: NewsSource[] = [
   // ── Israeli ───────────────────────────────────────────────────────────────
   {
     id: 'haaretz',
-    name: 'Haaretz',
-    bias: 'israeli-left',
-    biasColor: 'left',
-    lean: -1,
+    name: 'Jerusalem Post',
+    bias: 'israeli-center',
+    biasColor: 'center',
+    lean: 1,
     region: 'MENA',
     country: 'Israel',
-    rss: '/api/rss-proxy?url=https://www.haaretz.com/cmlink/1.628765&id=haaretz',
-    description: 'Israeli left-wing daily. Most critical Israeli outlet of government policy. Often cited internationally.',
+    tier: 'tier2',
+    sourceType: 'mainstream',
+    rss: '/api/rss-proxy?url=https://www.jpost.com/rss/rssfeedsfrontpage.aspx&id=haaretz',
+    description: 'Jerusalem Post. Leading Israeli English-language daily. Center-right Israeli perspective.',
   },
   {
     id: 'timesofisrael',
@@ -137,6 +159,8 @@ export const NEWS_SOURCES: NewsSource[] = [
     lean: 1,
     region: 'MENA',
     country: 'Israel',
+    tier: 'tier2',
+    sourceType: 'mainstream',
     rss: '/api/rss-proxy?url=https://www.timesofisrael.com/feed&id=timesofisrael',
     description: 'Israeli center. English-language. More balanced than most Israeli outlets. Pro-Israel framing.',
   },
@@ -150,6 +174,8 @@ export const NEWS_SOURCES: NewsSource[] = [
     lean: -3,
     region: 'Europe',
     country: 'Russia',
+    tier: 'tier2',
+    sourceType: 'state',
     rss: '/api/rss-proxy?url=https://www.rt.com/rss/&id=rt',
     description: 'Russian state media. Kremlin mouthpiece. Banned in EU. Important to include to understand Russian framing.',
   },
@@ -161,6 +187,8 @@ export const NEWS_SOURCES: NewsSource[] = [
     lean: -3,
     region: 'Europe',
     country: 'Russia',
+    tier: 'tier2',
+    sourceType: 'state',
     rss: '/api/rss-proxy?url=https://tass.com/rss/v2.xml&id=tass',
     description: 'Official Russian state newswire. Pure Kremlin position. No editorial independence.',
   },
@@ -168,14 +196,16 @@ export const NEWS_SOURCES: NewsSource[] = [
   // ── Chinese ───────────────────────────────────────────────────────────────
   {
     id: 'cgtn',
-    name: 'CGTN',
+    name: 'Global Times',
     bias: 'pro-beijing',
     biasColor: 'state',
     lean: -3,
     region: 'Asia',
     country: 'China',
-    rss: '/api/rss-proxy?url=https://www.cgtn.com/subscribe/feeds/rss/news.xml&id=cgtn',
-    description: 'Chinese state international broadcaster. CCP mouthpiece in English. Important for Chinese framing.',
+    tier: 'tier2',
+    sourceType: 'state',
+    rss: '/api/rss-proxy?url=https://www.globaltimes.cn/rss/outbrain.xml&id=cgtn',
+    description: 'Global Times — CCP-controlled English tabloid. Hawkish nationalist perspective. China\'s most aggressive state media voice.',
   },
   {
     id: 'scmp',
@@ -185,6 +215,8 @@ export const NEWS_SOURCES: NewsSource[] = [
     lean: -1,
     region: 'Asia',
     country: 'Hong Kong',
+    tier: 'tier2',
+    sourceType: 'mainstream',
     rss: '/api/rss-proxy?url=https://www.scmp.com/rss/91/feed&id=scmp',
     description: 'South China Morning Post. Hong Kong-based, Alibaba-owned. More nuanced than CGTN but Beijing-influenced.',
   },
@@ -198,7 +230,9 @@ export const NEWS_SOURCES: NewsSource[] = [
     lean: -3,
     region: 'MENA',
     country: 'Iran',
-    rss: '/api/rss-proxy?url=https://www.presstv.ir/RSS&id=presstv',
+    tier: 'tier2',
+    sourceType: 'state',
+    rss: '/api/rss-proxy?url=https://www.presstv.ir/rss.xml&id=presstv',
     description: 'Iranian state media in English. Anti-US, anti-Israel, pro-resistance axis framing.',
   },
 
@@ -211,6 +245,8 @@ export const NEWS_SOURCES: NewsSource[] = [
     lean: -1,
     region: 'Global',
     country: 'Netherlands',
+    tier: 'tier1',
+    sourceType: 'independent',
     rss: '/api/rss-proxy?url=https://www.bellingcat.com/feed&id=bellingcat',
     description: 'Open-source investigative journalism. Fact-based, evidence-driven. Western-leaning but methodologically rigorous.',
   },
@@ -222,6 +258,8 @@ export const NEWS_SOURCES: NewsSource[] = [
     lean: -2,
     region: 'Americas',
     country: 'USA',
+    tier: 'tier2',
+    sourceType: 'independent',
     rss: '/api/rss-proxy?url=https://theintercept.com/feed/?rss&id=intercept',
     description: 'US left-wing investigative. Anti-surveillance, anti-empire. Strong on US foreign policy critique.',
   },
@@ -235,13 +273,189 @@ export const NEWS_SOURCES: NewsSource[] = [
     lean: -1,
     region: 'Asia',
     country: 'India',
+    tier: 'tier1',
+    sourceType: 'mainstream',
     rss: '/api/rss-proxy?url=https://www.thehindu.com/feeder/default.rss&id=thehindu',
     description: 'Indian center-left. Respected journalism, non-Western perspective on global events.',
+  },
+
+  // ── Dynamic Social Topic Feeds (driven by selected UI filter) ───────────
+  {
+    id: 'x-topic',
+    name: 'X Public (Topic Feed)',
+    bias: 'right',
+    biasColor: 'right',
+    lean: 1,
+    region: 'Global',
+    country: 'Global',
+    tier: 'tier3',
+    sourceType: 'social',
+    rss: '/api/rss-proxy?url=https://nitter.net/search/rss?f=tweets&q=__TOPIC__&id=x-topic',
+    description: 'X (Twitter) public posts via topic search feed. Query updates with selected topic/filter.',
+  },
+  {
+    id: 'meta-topic',
+    name: 'Meta Public Mentions (Topic Feed)',
+    bias: 'center',
+    biasColor: 'center',
+    lean: 0,
+    region: 'Global',
+    country: 'Global',
+    tier: 'tier3',
+    sourceType: 'social',
+    rss: '/api/rss-proxy?url=https://news.google.com/rss/search?q=site:facebook.com+__TOPIC__&hl=en-US&gl=US&ceid=US:en&id=meta-topic',
+    description: 'Public Meta/Facebook post mentions from open web indexing, dynamically filtered by selected topic.',
+  },
+
+  // ── High-profile leadership feeds ───────────────────────────────────────
+  {
+    id: 'potus-x',
+    name: 'POTUS (X)',
+    bias: 'center',
+    biasColor: 'center',
+    lean: 0,
+    region: 'Americas',
+    country: 'USA',
+    tier: 'tier2',
+    sourceType: 'social',
+    rss: '/api/rss-proxy?url=https://nitter.net/POTUS/rss&id=potus-x',
+    description: 'Official U.S. President social feed for direct statements.',
+  },
+  {
+    id: 'ukpm-x',
+    name: 'UK PM / 10 Downing (X)',
+    bias: 'center-right',
+    biasColor: 'center',
+    lean: 1,
+    region: 'Europe',
+    country: 'UK',
+    tier: 'tier2',
+    sourceType: 'social',
+    rss: '/api/rss-proxy?url=https://nitter.net/10DowningStreet/rss&id=ukpm-x',
+    description: 'Official UK Prime Minister office social feed for direct announcements.',
+  },
+  {
+    id: 'modi-x',
+    name: 'PM Modi (X)',
+    bias: 'center-right',
+    biasColor: 'center',
+    lean: 1,
+    region: 'Asia',
+    country: 'India',
+    tier: 'tier2',
+    sourceType: 'social',
+    rss: '/api/rss-proxy?url=https://nitter.net/narendramodi/rss&id=modi-x',
+    description: 'India PM social feed for direct statements and policy communication.',
+  },
+
+  // ── Social / Rumor Watch ────────────────────────────────────────────────
+  {
+    id: 'reddit-worldnews',
+    name: 'Reddit r/worldnews',
+    bias: 'center',
+    biasColor: 'center',
+    lean: 0,
+    region: 'Global',
+    country: 'Global',
+    tier: 'tier3',
+    sourceType: 'social',
+    rss: '/api/rss-proxy?url=https://www.reddit.com/r/worldnews/new/.rss&id=reddit-worldnews',
+    description: 'Global public social feed. Fast signal, mixed reliability; corroborate before treating as fact.',
+  },
+  {
+    id: 'reddit-lebanon',
+    name: 'Reddit r/lebanon (Rumor Watch)',
+    bias: 'center',
+    biasColor: 'center',
+    lean: 0,
+    region: 'MENA',
+    country: 'Lebanon',
+    tier: 'tier3',
+    sourceType: 'rumor',
+    rss: '/api/rss-proxy?url=https://www.reddit.com/r/lebanon/new/.rss&id=reddit-lebanon',
+    description: 'Community posts and eyewitness chatter. Unverified unless corroborated by multiple credible outlets.',
+  },
+
+  // ── Localized (Lebanon example) ─────────────────────────────────────────
+  {
+    id: 'mtv-lebanon',
+    name: 'MTV Lebanon',
+    bias: 'center-right',
+    biasColor: 'right',
+    lean: 1,
+    region: 'MENA',
+    country: 'Lebanon',
+    tier: 'tier2',
+    sourceType: 'mainstream',
+    rss: '/api/rss-proxy?url=https://www.mtv.com.lb/RSS&id=mtv-lebanon',
+    description: 'Lebanese local TV newsroom feed for city and country-level updates.',
+  },
+
+  // ── Synthetic / Intelligence ─────────────────────────────────────────────
+  {
+    id: 'gdelt',
+    name: 'GDELT Intelligence',
+    bias: 'center',
+    biasColor: 'center',
+    lean: 0,
+    region: 'Global',
+    country: 'Global',
+    tier: 'tier1',
+    sourceType: 'independent',
+    rss: '', // synthetic — fetched via /api/gdelt, not rss-proxy
+    description: 'Global Database of Events, Language, and Tone. 100+ country/language corpus. Free, no API key.',
   },
 ];
 
 // Source map for O(1) lookup
 export const SOURCE_MAP = new Map(NEWS_SOURCES.map(s => [s.id, s]));
+
+function normalizeLocalSource(input: LocalMediaSource): NewsSource {
+  const sourceType = input.sourceType ?? 'independent';
+  const tier = input.tier ?? 'tier2';
+  const region = input.country ? input.country : 'Local';
+  const url = input.url.trim();
+  const rss = url.startsWith('/api/rss-proxy?url=')
+    ? url
+    : `/api/rss-proxy?url=${encodeURIComponent(url)}&id=${encodeURIComponent(input.id)}`;
+
+  return {
+    id: input.id,
+    name: input.name,
+    bias: sourceType === 'state' ? 'state-media' : sourceType === 'social' || sourceType === 'rumor' ? 'center-right' : 'center',
+    biasColor: sourceType === 'state' ? 'state' : sourceType === 'social' || sourceType === 'rumor' ? 'right' : 'center',
+    tier,
+    sourceType,
+    lean: sourceType === 'social' || sourceType === 'rumor' ? 1 : 0,
+    region,
+    country: input.country ?? 'Local',
+    rss,
+    description: `${input.city ? `${input.city}, ` : ''}${input.country ?? 'Local'} user-added media source (${getSourceTypeLabel(sourceType)}).`,
+  };
+}
+
+export function getLocalMediaSources(): NewsSource[] {
+  if (typeof window === 'undefined') return [];
+  try {
+    const raw = localStorage.getItem('pos-settings');
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    const items: LocalMediaSource[] = Array.isArray(parsed?.localMediaSources) ? parsed.localMediaSources : [];
+    return items
+      .filter(item => item?.id && item?.name && item?.url)
+      .map(normalizeLocalSource);
+  } catch {
+    return [];
+  }
+}
+
+export function getAllSources(): NewsSource[] {
+  return [...NEWS_SOURCES, ...getLocalMediaSources()];
+}
+
+export function getSourceById(sourceId: string): NewsSource | undefined {
+  return SOURCE_MAP.get(sourceId) ?? getLocalMediaSources().find(s => s.id === sourceId);
+}
 
 // Color hex values for bias rendering
 export const BIAS_COLORS: Record<string, string> = {
@@ -276,4 +490,14 @@ export function getBiasBgClass(color: string): string {
     osint:  'bg-cyan-500/10 border-cyan-500/30',
   };
   return map[color] ?? 'bg-gray-500/10 border-gray-500/30';
+}
+
+export function getSourceTypeLabel(sourceType?: NewsSource['sourceType']): string {
+  switch (sourceType) {
+    case 'social': return 'Social';
+    case 'rumor': return 'Rumor';
+    case 'independent': return 'Independent';
+    case 'state': return 'State';
+    default: return 'Mainstream';
+  }
 }

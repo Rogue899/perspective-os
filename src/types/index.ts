@@ -12,12 +12,24 @@ export interface NewsSource {
   name: string;
   bias: BiasLabel;
   biasColor: BiasColor;
+  tier?: 'tier1' | 'tier2' | 'tier3';
+  sourceType?: 'mainstream' | 'independent' | 'social' | 'rumor' | 'state';
   lean: number;       // -3 (hard left/state) to +3 (hard right)
   region: string;
   country: string;
   rss: string;
   logo?: string;
   description: string;
+}
+
+export interface LocalMediaSource {
+  id: string;
+  name: string;
+  url: string;
+  country?: string;
+  city?: string;
+  sourceType?: 'mainstream' | 'independent' | 'social' | 'rumor' | 'state';
+  tier?: 'tier1' | 'tier2' | 'tier3';
 }
 
 // ─── Article types ────────────────────────────────────────────────────────────
@@ -143,6 +155,7 @@ export interface AppSettings {
   openSkyPass: string;
   upstashUrl: string;
   upstashToken: string;
+  localMediaSources: LocalMediaSource[];
   enabledSources: string[];
   enableMap: boolean;
   enableConflictLayer: boolean;

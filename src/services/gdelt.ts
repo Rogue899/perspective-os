@@ -137,6 +137,27 @@ export async function getTopicFeed(topic: 'military' | 'cyber' | 'nuclear' | 'sa
   return searchGdelt(TOPIC_QUERIES[topic] ?? topic, 15);
 }
 
+// ─── Convert GDELT articles → RawArticle[] for clustering pipeline ────────────
+export function gdeltToRaw(articles: GdeltArticle[], topic: string): import('../types').RawArticle[] {
+  return articles
+    .filter(a => a.title && a.url)
+    .map(a => {
+      // GDELT seendate format: "20240315T120000Z"
+      const pubStr = a.seendate?.replace(
+        /^(\d{4})(\d{2})(\d{2})T(\d{2})(\d{2})(\d{2})Z$/,
+        '$1-$2-$3T$4:$5:$6Z'
+      );
+      return {
+        sourceId:    'gdelt',
+        sourceName:  a.domain ?? 'GDELT Intelligence',
+        title:       a.title,
+        description: `[GDELT ${topic}] lang:${a.language ?? '?'} | tone: ${a.tone?.toFixed(1) ?? 'n/a'}`,
+        url:         a.url,
+        publishedAt: pubStr ? new Date(pubStr) : new Date(),
+      };
+    });
+}
+
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 function bboxQuery(bbox: { minLat: number; maxLat: number; minLng: number; maxLng: number }): string {
   // GDELT doesn't support bbox natively in v2 doc, but we can filter post-fetch

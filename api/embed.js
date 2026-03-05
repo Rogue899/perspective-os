@@ -5,9 +5,16 @@
  * Redis-cached to minimize quota usage
  */
 
-import { Redis } from '@upstash/redis';
-
 export const config = { runtime: 'edge' };
+
+async function getRedis(url, token) {
+  try {
+    const { Redis } = await import('@upstash/redis');
+    return new Redis({ url, token });
+  } catch {
+    return null;
+  }
+}
 
 export default async function handler(req) {
   if (req.method !== 'POST') return new Response('POST only', { status: 405 });
@@ -23,7 +30,7 @@ export default async function handler(req) {
   let redis = null;
 
   if (UPSTASH_REDIS_REST_URL && UPSTASH_REDIS_REST_TOKEN) {
-    redis = new Redis({ url: UPSTASH_REDIS_REST_URL, token: UPSTASH_REDIS_REST_TOKEN });
+    redis = await getRedis(UPSTASH_REDIS_REST_URL, UPSTASH_REDIS_REST_TOKEN);
     try {
       const cached = await redis.get(cacheKey);
       if (cached) return Response.json({ embedding: cached, cached: true });

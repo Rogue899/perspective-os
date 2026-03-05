@@ -5,39 +5,41 @@
  */
 
 import type { RawArticle } from '../types';
-import { SOURCE_MAP } from '../config/sources';
+import { getSourceById } from '../config/sources';
 
 const FEED_CACHE = new Map<string, { articles: RawArticle[]; fetchedAt: number }>();
 const CACHE_TTL = 5 * 60 * 1000; // 5 min client-side cache
 
-export async function fetchFeed(sourceId: string): Promise<RawArticle[]> {
-  const source = SOURCE_MAP.get(sourceId);
+export async function fetchFeed(sourceId: string, topic = 'world news'): Promise<RawArticle[]> {
+  const source = getSourceById(sourceId);
   if (!source) return [];
+  const resolvedRss = source.rss.replace(/__TOPIC__/g, encodeURIComponent(topic));
+  const cacheKey = `${sourceId}::${topic}`;
 
   // Check client-side cache first
-  const cached = FEED_CACHE.get(sourceId);
+  const cached = FEED_CACHE.get(cacheKey);
   if (cached && Date.now() - cached.fetchedAt < CACHE_TTL) {
     return cached.articles;
   }
 
   try {
-    const res = await fetch(source.rss, {
+    const res = await fetch(resolvedRss, {
       headers: { 'Accept': 'application/rss+xml, application/xml, text/xml' },
     });
     if (!res.ok) throw new Error(`RSS ${res.status} for ${sourceId}`);
     const xml = await res.text();
     const articles = parseRSS(xml, sourceId, source.name);
 
-    FEED_CACHE.set(sourceId, { articles, fetchedAt: Date.now() });
+    FEED_CACHE.set(cacheKey, { articles, fetchedAt: Date.now() });
     return articles;
   } catch (err) {
     console.warn(`[RSS] Failed to fetch ${sourceId}:`, err);
-    return FEED_CACHE.get(sourceId)?.articles ?? [];
+    return FEED_CACHE.get(cacheKey)?.articles ?? [];
   }
 }
 
-export async function fetchAllFeeds(sourceIds: string[]): Promise<RawArticle[]> {
-  const results = await Promise.allSettled(sourceIds.map(id => fetchFeed(id)));
+export async function fetchAllFeeds(sourceIds: string[], topic = 'world news'): Promise<RawArticle[]> {
+  const results = await Promise.allSettled(sourceIds.map(id => fetchFeed(id, topic)));
   return results
     .filter((r): r is PromiseFulfilledResult<RawArticle[]> => r.status === 'fulfilled')
     .flatMap(r => r.value)
@@ -63,8 +65,8 @@ function parseRSS(xml: string, sourceId: string, sourceName: string): RawArticle
       const title = get('title');
       const description = stripHtml(get('description') || get('summary') || get('content'));
       const url = isAtom
-        ? item.querySelector('link')?.getAttribute('href') ?? get('link')
-        : get('link') || item.querySelector('link')?.textContent ?? '';
+        ? (item.querySelector('link')?.getAttribute('href') ?? get('link'))
+        : (get('link') || (item.querySelector('link')?.textContent ?? ''));
       const pubStr = get('pubDate') || get('published') || get('updated');
       const publishedAt = pubStr ? new Date(pubStr) : new Date();
 

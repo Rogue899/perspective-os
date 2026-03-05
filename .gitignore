@@ -1,12 +1,42 @@
+# Dependencies
 node_modules/
+
+# Build output
 dist/
+build/
+.output/
+
+# Environment & secrets — NEVER push these
 .env
-.env.local
-.env.*.local
+.env.*
+!.env.example
+
+# Vercel
 .vercel/
-*.log
+
+# Claude Code / MCP — contains local configs & sensitive tool settings
+CLAUDE.md
+.claude/
+.mcp.json
+
+# IDE & OS
 .DS_Store
 Thumbs.db
-{src/
+*.log
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Temp & cache
 api-cache.json
 tmp/
+.cache/
+
+# Misc artifacts
+{src/
+*.tgz
+*.bak
+
+.vercel

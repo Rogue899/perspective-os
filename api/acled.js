@@ -5,12 +5,19 @@
  * 30-day rolling window, 10-minute Redis cache (WorldMonitor TTL)
  */
 
-import { Redis } from '@upstash/redis';
-
 export const config = { runtime: 'edge' };
 
 const CACHE_KEY = 'acled:30d';
 const CACHE_TTL = 600; // 10 min
+
+async function getRedis(url, token) {
+  try {
+    const { Redis } = await import('@upstash/redis');
+    return new Redis({ url, token });
+  } catch {
+    return null;
+  }
+}
 
 export default async function handler(req) {
   if (req.method === 'OPTIONS') return corsOk();
@@ -24,7 +31,7 @@ export default async function handler(req) {
   // Redis cache
   let redis = null;
   if (UPSTASH_REDIS_REST_URL && UPSTASH_REDIS_REST_TOKEN) {
-    redis = new Redis({ url: UPSTASH_REDIS_REST_URL, token: UPSTASH_REDIS_REST_TOKEN });
+    redis = await getRedis(UPSTASH_REDIS_REST_URL, UPSTASH_REDIS_REST_TOKEN);
     try {
       const cached = await redis.get(CACHE_KEY);
       if (cached) return cors(Response.json({ events: cached, cached: true }));

@@ -1,11 +1,19 @@
 import { useState } from 'react';
 import { useApp } from '../../context/AppContext';
-import { NEWS_SOURCES } from '../../config/sources';
-import { X, Key, Database, Brain } from 'lucide-react';
+import { getAllSources } from '../../config/sources';
+import { X, Database, Link, Plus, Trash2 } from 'lucide-react';
 
 export function SettingsModal({ onClose }: { onClose: () => void }) {
   const { state, dispatch } = useApp();
   const [settings, setSettings] = useState(state.settings);
+  const [localForm, setLocalForm] = useState({
+    name: '',
+    url: '',
+    country: '',
+    city: '',
+    sourceType: 'independent' as const,
+  });
+  const allSources = getAllSources();
 
   const update = <K extends keyof typeof settings>(key: K, value: typeof settings[K]) => {
     setSettings(s => ({ ...s, [key]: value }));
@@ -22,6 +30,29 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
     update('enabledSources', next);
   };
 
+  const addLocalMedia = () => {
+    if (!localForm.name.trim() || !localForm.url.trim()) return;
+    const idBase = localForm.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
+    const id = `local-${idBase || 'source'}-${Date.now().toString().slice(-5)}`;
+    const nextSource = {
+      id,
+      name: localForm.name.trim(),
+      url: localForm.url.trim(),
+      country: localForm.country.trim() || 'Local',
+      city: localForm.city.trim() || '',
+      sourceType: localForm.sourceType,
+      tier: 'tier2' as const,
+    };
+    update('localMediaSources', [...settings.localMediaSources, nextSource]);
+    update('enabledSources', [...settings.enabledSources, id]);
+    setLocalForm({ name: '', url: '', country: '', city: '', sourceType: 'independent' });
+  };
+
+  const removeLocalMedia = (id: string) => {
+    update('localMediaSources', settings.localMediaSources.filter(s => s.id !== id));
+    update('enabledSources', settings.enabledSources.filter(sid => sid !== id));
+  };
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
       <div className="w-full max-w-lg bg-surface border border-border rounded-lg shadow-2xl flex flex-col max-h-[85vh]">
@@ -34,74 +65,91 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
         </div>
 
         <div className="flex-1 overflow-y-auto">
-          {/* API Keys */}
-          <Section title="API Keys" icon={<Key size={13} />}>
-            <div className="space-y-3">
-              <Field
-                label="Gemini API Key"
-                hint="aistudio.google.com — free, no credit card"
-                type="password"
-                value={settings.geminiKey}
-                onChange={v => update('geminiKey', v)}
-                placeholder="AIza..."
-              />
-              <Field
-                label="Groq API Key"
-                hint="console.groq.com — 14,400 req/day free fallback"
-                type="password"
-                value={settings.groqKey}
-                onChange={v => update('groqKey', v)}
-                placeholder="gsk_..."
-              />
-              <Field
-                label="ACLED Access Token"
-                hint="acleddata.com — free academic registration"
-                type="password"
-                value={settings.acledKey}
-                onChange={v => update('acledKey', v)}
-                placeholder="token..."
-              />
-              <Field
-                label="Upstash Redis URL"
-                hint="upstash.com — 10K commands/day free cache"
-                value={settings.upstashUrl}
-                onChange={v => update('upstashUrl', v)}
-                placeholder="https://xxx.upstash.io"
-              />
-              <Field
-                label="Upstash Redis Token"
-                type="password"
-                value={settings.upstashToken}
-                onChange={v => update('upstashToken', v)}
-                placeholder="token..."
-              />
+          {/* Security note */}
+          <Section title="Security" icon={<Link size={13} />}>
+            <div className="text-[11px] text-dim leading-relaxed">
+              API keys are not editable or persisted in the browser UI anymore.
+              Configure keys only in local server env (`.env.local`) for dev, or in Vercel project env for deploy.
             </div>
           </Section>
 
-          {/* AI Provider */}
-          <Section title="AI Provider" icon={<Brain size={13} />}>
-            <div className="space-y-1.5">
-              {(['gemini-flash', 'gemini-flash-lite', 'groq', 'browser-t5'] as const).map(p => (
-                <label key={p} className="flex items-center gap-2.5 cursor-pointer hover:bg-white/5 px-2 py-1.5 rounded">
-                  <input
-                    type="radio"
-                    name="aiProvider"
-                    checked={settings.aiProvider === p}
-                    onChange={() => update('aiProvider', p)}
-                    className="accent-green-400"
-                  />
-                  <span className="text-xs font-mono text-white">{p}</span>
-                  {p === 'gemini-flash' && <span className="text-[9px] text-dim ml-auto">recommended</span>}
-                  {p === 'browser-t5' && <span className="text-[9px] text-dim ml-auto">offline, basic</span>}
-                </label>
-              ))}
+          {/* Local media sources */}
+          <Section title="Local Media Sources" icon={<Plus size={13} />}>
+            <div className="space-y-2.5">
+              <Field
+                label="Display Name"
+                value={localForm.name}
+                onChange={v => setLocalForm(s => ({ ...s, name: v }))}
+                placeholder="MTV Lebanon / City News"
+              />
+              <Field
+                label="RSS/API Link"
+                hint="Paste RSS URL or API feed URL"
+                value={localForm.url}
+                onChange={v => setLocalForm(s => ({ ...s, url: v }))}
+                placeholder="https://example.com/rss.xml"
+              />
+              <div className="grid grid-cols-2 gap-2">
+                <Field
+                  label="Country"
+                  value={localForm.country}
+                  onChange={v => setLocalForm(s => ({ ...s, country: v }))}
+                  placeholder="Lebanon"
+                />
+                <Field
+                  label="City"
+                  value={localForm.city}
+                  onChange={v => setLocalForm(s => ({ ...s, city: v }))}
+                  placeholder="Beirut"
+                />
+              </div>
+              <div>
+                <label className="block text-[11px] font-mono text-dim mb-1">Source Type</label>
+                <select
+                  value={localForm.sourceType}
+                  onChange={e => setLocalForm(s => ({ ...s, sourceType: e.target.value as typeof localForm.sourceType }))}
+                  className="w-full bg-bg border border-border rounded px-2.5 py-1.5 text-xs font-mono text-white focus:outline-none focus:border-accent"
+                >
+                  <option value="mainstream">Mainstream</option>
+                  <option value="independent">Independent</option>
+                  <option value="social">Social</option>
+                  <option value="rumor">Rumor / Unverified</option>
+                  <option value="state">State</option>
+                </select>
+              </div>
+              <button
+                onClick={addLocalMedia}
+                className="px-3 py-1.5 text-xs font-mono rounded bg-accent text-black hover:bg-accent/90"
+              >
+                Add Local Source
+              </button>
+
+              {settings.localMediaSources.length > 0 && (
+                <div className="space-y-1.5 pt-2 border-t border-border">
+                  {settings.localMediaSources.map(src => (
+                    <div key={src.id} className="flex items-center justify-between gap-2 text-[11px]">
+                      <div className="min-w-0">
+                        <div className="text-white font-mono truncate">{src.name}</div>
+                        <div className="text-dim truncate">{src.city ? `${src.city}, ` : ''}{src.country}</div>
+                      </div>
+                      <button
+                        onClick={() => removeLocalMedia(src.id)}
+                        className="text-red-400 hover:text-red-300"
+                        title="Remove source"
+                      >
+                        <Trash2 size={12} />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           </Section>
 
           {/* News Sources */}
           <Section title="Active Sources" icon={<Database size={13} />}>
             <div className="space-y-1">
-              {NEWS_SOURCES.map(src => (
+              {allSources.map(src => (
                 <label key={src.id} className="flex items-center gap-2.5 cursor-pointer hover:bg-white/5 px-2 py-1.5 rounded">
                   <input
                     type="checkbox"

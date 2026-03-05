@@ -6,8 +6,8 @@
  */
 
 import type { RawArticle, ScoredArticle, StoryCluster } from '../types';
-import { classifyWithAI } from './ai';
-import { SOURCE_MAP } from '../config/sources';
+import { classifyWithAI } from '../services/ai';
+import { getSourceById } from '../config/sources';
 
 const SIMILARITY_THRESHOLD = 0.15;  // min Jaccard to cluster
 const TIME_WINDOW_MS = 4 * 60 * 60 * 1000; // 4 hours
@@ -43,7 +43,7 @@ function jaccard(a: Set<string>, b: Set<string>): number {
 function calcPerspectiveScore(articles: ScoredArticle[]): number {
   if (articles.length < 2) return 0;
   const sourceCount = new Set(articles.map(a => a.sourceId)).size;
-  const leans = articles.map(a => SOURCE_MAP.get(a.sourceId)?.lean ?? 0);
+  const leans = articles.map(a => getSourceById(a.sourceId)?.lean ?? 0);
   const spread = Math.max(...leans) - Math.min(...leans);
   // Normalize: max 6 spread (from -3 to +3), max 6 sources
   return Math.min(1, (spread / 6) * 0.6 + (sourceCount / 6) * 0.4);

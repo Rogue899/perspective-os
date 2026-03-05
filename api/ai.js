@@ -8,20 +8,24 @@
  * Cache TTL is caller-specified (default 3600s for perspective analysis).
  */
 
-import { Redis } from '@upstash/redis';
-
 export const config = { runtime: 'edge' };
 
 // Rate limiter state (per-instance, resets on cold start)
 // For proper per-IP limiting, use Upstash Rate Limit
 const REQUEST_COUNTS = new Map();
 
-function createRedis() {
+async function createRedis() {
   if (!process.env.UPSTASH_REDIS_REST_URL || !process.env.UPSTASH_REDIS_REST_TOKEN) return null;
-  return new Redis({
-    url:   process.env.UPSTASH_REDIS_REST_URL,
-    token: process.env.UPSTASH_REDIS_REST_TOKEN,
-  });
+  try {
+    const { Redis } = await import('@upstash/redis');
+    return new Redis({
+      url:   process.env.UPSTASH_REDIS_REST_URL,
+      token: process.env.UPSTASH_REDIS_REST_TOKEN,
+    });
+  } catch {
+    console.warn('[AI] @upstash/redis not available, running without cache');
+    return null;
+  }
 }
 
 async function callGemini(prompt, systemPrompt, model, maxTokens, apiKey) {
@@ -93,7 +97,7 @@ export default async function handler(req) {
 
   const geminiKey = process.env.GEMINI_API_KEY;
   const groqKey   = process.env.GROQ_API_KEY;
-  const redis     = createRedis();
+  const redis     = await createRedis();
 
   // ── Redis cache lookup ─────────────────────────────────────────────────────
   const redisKey = cacheKey ?? `ai:${hashString(prompt.slice(0, 200))}`;

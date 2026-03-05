@@ -1,7 +1,7 @@
 import type { StoryCluster } from '../../types';
-import { SOURCE_MAP, getBiasTextClass, getBiasBgClass } from '../../config/sources';
+import { getSourceById, getBiasTextClass, getBiasBgClass } from '../../config/sources';
 import { useApp } from '../../context/AppContext';
-import { AlertTriangle, Eye, Clock } from 'lucide-react';
+import { AlertTriangle, Eye, Clock, ShieldAlert } from 'lucide-react';
 
 const SEVERITY_COLORS: Record<string, string> = {
   critical: 'text-red-400 border-l-red-500',
@@ -26,6 +26,10 @@ export function StoryCard({ cluster }: { cluster: StoryCluster }) {
   const sevColor = SEVERITY_COLORS[cluster.severity] ?? SEVERITY_COLORS.low;
   const hasMultipleViews = cluster.sourceIds.length >= 2;
   const perspectiveHigh = cluster.perspectiveScore >= 0.4;
+  const hasUnverifiedLane = cluster.sourceIds.some(sid => {
+    const src = getSourceById(sid);
+    return src?.sourceType === 'social' || src?.sourceType === 'rumor';
+  });
 
   return (
     <article
@@ -47,6 +51,11 @@ export function StoryCard({ cluster }: { cluster: StoryCluster }) {
             <Eye size={9} /> High Bias
           </span>
         )}
+        {hasUnverifiedLane && (
+          <span className="flex items-center gap-1 text-[9px] font-mono text-amber-300 bg-amber-500/10 px-1.5 py-0.5 rounded border border-amber-500/25 uppercase tracking-wider">
+            <ShieldAlert size={9} /> Unverified lane
+          </span>
+        )}
       </div>
 
       {/* Headline */}
@@ -57,7 +66,7 @@ export function StoryCard({ cluster }: { cluster: StoryCluster }) {
       {/* Source chips */}
       <div className="flex items-center flex-wrap gap-1 mb-1.5">
         {cluster.sourceIds.slice(0, 6).map(sid => {
-          const src = SOURCE_MAP.get(sid);
+          const src = getSourceById(sid);
           if (!src) return null;
           return (
             <span
