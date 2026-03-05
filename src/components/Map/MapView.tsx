@@ -4,6 +4,7 @@ import { Locate, LocateFixed, LoaderCircle, MessageCircle, Video, X } from 'luci
 import { fetchGdeltEvents } from '../../services/gdelt';
 import { useApp } from '../../context/AppContext';
 import type { GdeltEvent } from '../../types';
+import { buildPublicVideoLinks } from '../../utils/public-video-links';
 
 // Free tile source — no token needed
 const MAP_STYLE = 'https://tiles.openfreemap.org/styles/dark';
@@ -62,18 +63,32 @@ export function MapView() {
       ? withGeo.filter(c => c.geoHint?.name.toLowerCase() === name.toLowerCase())
       : [];
 
+    // Use tighter radius for user's own location (name==='Near you'), wider for clicked cities
+    const radiusKm = name === 'Near you' ? 150 : 600;
     const nearby = withGeo
       .map(c => ({
         cluster: c,
         dist: distanceKm(lat, lng, c.geoHint!.lat, c.geoHint!.lng),
       }))
-      .filter(v => v.dist <= 600)
+      .filter(v => v.dist <= radiusKm)
       .sort((a, b) => a.dist - b.dist)
       .map(v => v.cluster);
 
     const merged = [...exact, ...nearby].filter((value, index, arr) => arr.findIndex(v => v.id === value.id) === index);
     return merged.slice(0, 6);
   }, [clusters, distanceKm]);
+
+  const locationVideoLinks = floatingLocation
+    ? buildPublicVideoLinks(`${floatingLocation.name} latest news`)
+    : [];
+
+  const linkTone: Record<string, string> = {
+    youtube: 'hover:border-red-500/40 hover:bg-red-500/5',
+    rumble: 'hover:border-green-500/40 hover:bg-green-500/5',
+    kick: 'hover:border-emerald-500/40 hover:bg-emerald-500/5',
+    reddit: 'hover:border-orange-500/40 hover:bg-orange-500/5',
+    x: 'hover:border-blue-500/40 hover:bg-blue-500/5',
+  };
 
   const locateMe = useCallback(() => {
     if (!map.current || !mapReady) return;
@@ -149,7 +164,7 @@ export function MapView() {
           .setPopup(popup)
           .addTo(map.current!);
 
-        map.current!.flyTo({ center: [lng, lat], zoom: 6, duration: 1800 });
+        map.current!.flyTo({ center: [lng, lat], zoom: 9, duration: 1800 });
         setUserCoords({ lat, lng });
         setFloatingLocation({ name: 'Near you', lat, lng });
         setFloatingTab('news');
@@ -203,6 +218,46 @@ export function MapView() {
       setConflictEvents(events.slice(0, 200));
     });
   }, [mapReady]);
+
+  // Render GDELT conflict event dots (separate from story cluster markers)
+  useEffect(() => {
+    if (!map.current || !mapReady || conflictEvents.length === 0) return;
+    if (!map.current.isStyleLoaded()) return;
+
+    // Remove old GeoJSON source/layer if exists
+    try { map.current.removeLayer('gdelt-events'); } catch {}
+    try { map.current.removeSource('gdelt-events'); } catch {}
+
+    const features = conflictEvents.map(e => ({
+      type: 'Feature' as const,
+      geometry: { type: 'Point' as const, coordinates: [e.lng, e.lat] },
+      properties: {
+        tone: e.tone,
+        actor1: e.actor1,
+        actor2: e.actor2,
+        mentions: e.mentionCount,
+      },
+    }));
+
+    try {
+      map.current.addSource('gdelt-events', {
+        type: 'geojson',
+        data: { type: 'FeatureCollection', features },
+      });
+      map.current.addLayer({
+        id: 'gdelt-events',
+        type: 'circle',
+        source: 'gdelt-events',
+        paint: {
+          'circle-radius': ['interpolate', ['linear'], ['get', 'mentions'], 1, 3, 50, 7],
+          'circle-color': ['interpolate', ['linear'], ['get', 'tone'], -10, '#ef4444', 0, '#f59e0b', 10, '#6b7280'],
+          'circle-opacity': 0.45,
+          'circle-stroke-width': 0.5,
+          'circle-stroke-color': 'rgba(255,255,255,0.2)',
+        },
+      });
+    } catch { /* style not ready */ }
+  }, [conflictEvents, mapReady]);
 
   // Render story cluster markers
   useEffect(() => {
@@ -340,25 +395,19 @@ export function MapView() {
             </div>
           ) : (
             <div className="p-2.5 space-y-2">
-              <div className="text-[10px] text-dim font-mono">Local video searches</div>
-              <a
-                href={`https://www.youtube.com/results?search_query=${encodeURIComponent(`${floatingLocation.name} latest news`)}`}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="flex items-center gap-2 p-2 rounded border border-border hover:border-red-500/40 hover:bg-red-500/5 text-[11px] text-white"
-              >
-                <Video size={12} className="text-red-400" />
-                YouTube: {floatingLocation.name} latest news
-              </a>
-              <a
-                href={`https://rumble.com/search/video?q=${encodeURIComponent(`${floatingLocation.name} news`)}`}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="flex items-center gap-2 p-2 rounded border border-border hover:border-green-500/40 hover:bg-green-500/5 text-[11px] text-white"
-              >
-                <Video size={12} className="text-green-400" />
-                Rumble: {floatingLocation.name} news
-              </a>
+              <div className="text-[10px] text-dim font-mono">No-login video/social searches</div>
+              {locationVideoLinks.map(link => (
+                <a
+                  key={link.platform}
+                  href={link.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className={`flex items-center gap-2 p-2 rounded border border-border text-[11px] text-white ${linkTone[link.platform] || 'hover:border-accent/40 hover:bg-accent/5'}`}
+                >
+                  <Video size={12} className="text-accent" />
+                  {link.label}
+                </a>
+              ))}
               {userCoords && (
                 <div className="text-[9px] text-dim font-mono pt-1 border-t border-border">
                   Personalized from your geolocation

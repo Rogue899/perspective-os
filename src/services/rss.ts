@@ -6,9 +6,12 @@
 
 import type { RawArticle } from '../types';
 import { getSourceById } from '../config/sources';
+import { fetchWithBreaker, getCircuitState } from './circuit-breaker';
 
 const FEED_CACHE = new Map<string, { articles: RawArticle[]; fetchedAt: number }>();
 const CACHE_TTL = 5 * 60 * 1000; // 5 min client-side cache
+
+export { getCircuitState }; // re-export for UI status badges
 
 export async function fetchFeed(sourceId: string, topic = 'world news'): Promise<RawArticle[]> {
   const source = getSourceById(sourceId);
@@ -22,20 +25,23 @@ export async function fetchFeed(sourceId: string, topic = 'world news'): Promise
     return cached.articles;
   }
 
-  try {
-    const res = await fetch(resolvedRss, {
-      headers: { 'Accept': 'application/rss+xml, application/xml, text/xml' },
-    });
-    if (!res.ok) throw new Error(`RSS ${res.status} for ${sourceId}`);
-    const xml = await res.text();
-    const articles = parseRSS(xml, sourceId, source.name);
+  // Use circuit breaker for all RSS fetches
+  const result = await fetchWithBreaker(sourceId, resolvedRss, {
+    headers: { 'Accept': 'application/rss+xml, application/xml, text/xml' },
+  });
 
-    FEED_CACHE.set(cacheKey, { articles, fetchedAt: Date.now() });
-    return articles;
-  } catch (err) {
-    console.warn(`[RSS] Failed to fetch ${sourceId}:`, err);
+  if (!result.ok) {
+    // Return stale cache from circuit breaker if available, otherwise client cache
+    if (result.stale) {
+      const staleArticles = parseRSS(result.stale, sourceId, source.name);
+      if (staleArticles.length > 0) return staleArticles;
+    }
     return FEED_CACHE.get(cacheKey)?.articles ?? [];
   }
+
+  const articles = parseRSS(result.body, sourceId, source.name);
+  FEED_CACHE.set(cacheKey, { articles, fetchedAt: Date.now() });
+  return articles;
 }
 
 export async function fetchAllFeeds(sourceIds: string[], topic = 'world news'): Promise<RawArticle[]> {
