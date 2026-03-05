@@ -161,6 +161,32 @@ async function handleFinance(_req, res, params) {
   }
 }
 
+const TG_ALLOWED = ['intelcrab','GeoConfirmed','nexta_tv','wartranslated','militaryland_net','rybar','OSINTdefender','bbcnews','reutersagency','alarabiya_breaking'];
+
+async function handleTelegram(_req, res, params) {
+  const channel = (params.get('channel') || '').replace(/[^a-zA-Z0-9_]/g, '');
+  if (!channel || !TG_ALLOWED.includes(channel)) {
+    res.writeHead(403, cors()); res.end(JSON.stringify({ error: 'Channel not allowed' })); return;
+  }
+  try {
+    const r = await fetch(`https://t.me/s/${channel}`, {
+      headers: { 'User-Agent': 'Mozilla/5.0 (compatible; PerspectiveOS/1.0)', 'Accept': 'text/html' },
+      signal: AbortSignal.timeout(10000),
+    });
+    if (!r.ok) { res.writeHead(502, cors()); res.end(JSON.stringify({ error: `Upstream ${r.status}` })); return; }
+    const html = await r.text();
+    // Extract post texts via simple regex (same as edge function)
+    const texts = [...html.matchAll(/<div class="tgme_widget_message_text[^"]*"[^>]*>([\s\S]*?)<\/div>/g)].map(m => m[1].replace(/<[^>]+>/g,'').replace(/&[a-z]+;/g,' ').trim().slice(0,400));
+    const dates = [...html.matchAll(/<time datetime="([^"]+)"/g)].map(m => m[1]);
+    const ids   = [...html.matchAll(/data-post="[^\/]+\/(\d+)"/g)].map(m => m[1]);
+    const posts = texts.slice(0,15).map((t,i) => ({ id: ids[i]||String(i), text: t, date: dates[i]||new Date().toISOString(), url: `https://t.me/${channel}/${ids[i]||''}` })).filter(p => p.text.length > 10);
+    res.writeHead(200, { ...cors(), 'Content-Type': 'application/json', 'Cache-Control': 'public, max-age=120' });
+    res.end(JSON.stringify({ channel, posts: posts.reverse().slice(0,12) }));
+  } catch (err) {
+    res.writeHead(502, cors()); res.end(JSON.stringify({ error: err.message }));
+  }
+}
+
 function cors() {
   return {
     'Access-Control-Allow-Origin':  '*',
@@ -187,10 +213,11 @@ const server = http.createServer(async (req, res) => {
 
   console.log(`[dev-api] ${req.method} ${url.pathname}`);
 
-  if (url.pathname === '/api/rss-proxy') return handleRssProxy(req, res, params);
-  if (url.pathname === '/api/gdelt')     return handleGdelt(req, res, params);
-  if (url.pathname === '/api/ai')        return handleAI(req, res);
-  if (url.pathname === '/api/finance')   return handleFinance(req, res, params);
+  if (url.pathname === '/api/rss-proxy')      return handleRssProxy(req, res, params);
+  if (url.pathname === '/api/gdelt')          return handleGdelt(req, res, params);
+  if (url.pathname === '/api/ai')             return handleAI(req, res);
+  if (url.pathname === '/api/finance')        return handleFinance(req, res, params);
+  if (url.pathname === '/api/telegram-proxy') return handleTelegram(req, res, params);
 
   res.writeHead(404, cors());
   res.end(JSON.stringify({ error: 'Not found: ' + url.pathname }));
