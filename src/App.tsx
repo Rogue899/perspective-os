@@ -4,6 +4,9 @@ import { Header } from './components/Layout/Header';
 import { FeedPanel } from './components/News/FeedPanel';
 import { PerspectivePanel } from './components/News/PerspectivePanel';
 import { MapView } from './components/Map/MapView';
+import { LivePanel } from './components/Live/LivePanel';
+import { FinancePanel } from './components/Finance/FinancePanel';
+import { WatchlistPanel } from './components/Watchlist/WatchlistPanel';
 import { SettingsModal } from './components/Layout/SettingsModal';
 import { useApp } from './context/AppContext';
 
@@ -14,12 +17,52 @@ function Dashboard() {
 
   const handleRefresh = () => window.dispatchEvent(new Event('pos:refresh'));
 
+  // Full-screen panels (replace the whole main area)
+  if (activePanel === 'live') {
+    return (
+      <div className="flex flex-col h-screen overflow-hidden bg-bg text-white font-mono">
+        <Header onRefresh={handleRefresh} onSettings={() => setShowSettings(true)} />
+        <main className="flex-1 overflow-hidden">
+          <LivePanel />
+        </main>
+        {showSettings && <SettingsModal onClose={() => setShowSettings(false)} />}
+      </div>
+    );
+  }
+
+  if (activePanel === 'finance') {
+    return (
+      <div className="flex flex-col h-screen overflow-hidden bg-bg text-white font-mono">
+        <Header onRefresh={handleRefresh} onSettings={() => setShowSettings(true)} />
+        <main className="flex-1 overflow-hidden">
+          <FinancePanel />
+        </main>
+        <StatusBar />
+        {showSettings && <SettingsModal onClose={() => setShowSettings(false)} />}
+      </div>
+    );
+  }
+
+  if (activePanel === 'watchlist') {
+    return (
+      <div className="flex flex-col h-screen overflow-hidden bg-bg text-white font-mono">
+        <Header onRefresh={handleRefresh} onSettings={() => setShowSettings(true)} />
+        <main className="flex-1 overflow-hidden">
+          <WatchlistPanel />
+        </main>
+        <StatusBar />
+        {showSettings && <SettingsModal onClose={() => setShowSettings(false)} />}
+      </div>
+    );
+  }
+
+  // Standard layout: feed (left) + map (center) + perspective (right)
   return (
     <div className="flex flex-col h-screen overflow-hidden bg-bg text-white font-mono">
       <Header onRefresh={handleRefresh} onSettings={() => setShowSettings(true)} />
 
       <main className="flex-1 flex overflow-hidden relative">
-        {/* Left column — always visible on larger screens */}
+        {/* Left column — feed (hidden on mobile when map is active) */}
         <div className={`
           ${activePanel === 'map' ? 'hidden xl:flex' : 'flex'}
           flex-col w-full xl:w-[380px] border-r border-border shrink-0 overflow-hidden
@@ -27,7 +70,7 @@ function Dashboard() {
           <FeedPanel onRefresh={handleRefresh} />
         </div>
 
-        {/* Center — map (visible when map tab active or on xl screens) */}
+        {/* Center — map */}
         <div className={`
           flex-1 overflow-hidden
           ${activePanel === 'news' ? 'hidden xl:block' : 'block'}
@@ -36,13 +79,11 @@ function Dashboard() {
           <MapView />
         </div>
 
-        {/* Perspective Panel — right sidebar when story selected */}
+        {/* Right sidebar — perspective panel when story selected */}
         {selectedCluster && <PerspectivePanel />}
       </main>
 
-      {/* Bottom status bar */}
       <StatusBar />
-
       {showSettings && <SettingsModal onClose={() => setShowSettings(false)} />}
     </div>
   );

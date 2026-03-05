@@ -4,18 +4,19 @@
  */
 
 import React, { createContext, useContext, useReducer, useEffect } from 'react';
-import type { StoryCluster, DataSourceStatus, AppSettings } from '../types';
+import type { StoryCluster, DataSourceStatus, AppSettings, WatchlistItem } from '../types';
 import { NEWS_SOURCES } from '../config/sources';
 
 interface AppState {
-  clusters:       StoryCluster[];
-  loading:        boolean;
-  lastRefresh:    Date | null;
-  settings:       AppSettings;
-  sourcesStatus:  DataSourceStatus[];
+  clusters:        StoryCluster[];
+  loading:         boolean;
+  lastRefresh:     Date | null;
+  settings:        AppSettings;
+  sourcesStatus:   DataSourceStatus[];
   selectedCluster: StoryCluster | null;
-  sidebarOpen:    boolean;
-  activePanel:    'news' | 'map' | 'analysis';
+  sidebarOpen:     boolean;
+  activePanel:     'news' | 'map' | 'analysis' | 'live' | 'finance' | 'watchlist';
+  watchlist:       WatchlistItem[];
 }
 
 type Action =
@@ -27,7 +28,8 @@ type Action =
   | { type: 'UPDATE_SETTINGS';     payload: Partial<AppSettings> }
   | { type: 'SET_SOURCE_STATUS';   payload: DataSourceStatus }
   | { type: 'TOGGLE_SIDEBAR' }
-  | { type: 'SET_ACTIVE_PANEL';    payload: AppState['activePanel'] };
+  | { type: 'SET_ACTIVE_PANEL';    payload: AppState['activePanel'] }
+  | { type: 'SET_WATCHLIST';       payload: WatchlistItem[] };
 
 const DEFAULT_SETTINGS: AppSettings = {
   geminiKey:            '',
@@ -54,6 +56,13 @@ function loadSettings(): AppSettings {
   return DEFAULT_SETTINGS;
 }
 
+function loadWatchlist(): WatchlistItem[] {
+  try {
+    const raw = localStorage.getItem('pos-watchlist');
+    return raw ? JSON.parse(raw) : [];
+  } catch { return []; }
+}
+
 const initialState: AppState = {
   clusters:        [],
   loading:         false,
@@ -63,6 +72,7 @@ const initialState: AppState = {
   selectedCluster: null,
   sidebarOpen:     false,
   activePanel:     'news',
+  watchlist:       loadWatchlist(),
 };
 
 function reducer(state: AppState, action: Action): AppState {
@@ -113,6 +123,10 @@ function reducer(state: AppState, action: Action): AppState {
       return { ...state, sidebarOpen: !state.sidebarOpen };
     case 'SET_ACTIVE_PANEL':
       return { ...state, activePanel: action.payload };
+    case 'SET_WATCHLIST': {
+      try { localStorage.setItem('pos-watchlist', JSON.stringify(action.payload)); } catch {}
+      return { ...state, watchlist: action.payload };
+    }
     default:
       return state;
   }

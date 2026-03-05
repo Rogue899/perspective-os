@@ -170,3 +170,25 @@ export interface DataSourceStatus {
   lastUpdated?: Date;
   errorMsg?: string;
 }
+
+// ─── Watchlist ─────────────────────────────────────────────────────────────
+export interface WatchlistItem {
+  id: string;
+  label: string;
+  keywords: string[];          // match ANY keyword
+  sourceIds?: string[];        // restrict to these sources (empty = all)
+  geoFilter?: string;          // country name (empty = global)
+  minSeverity: 'critical' | 'high' | 'medium' | 'low' | 'any';
+  categories?: EventCategory[];
+  createdAt: string;           // ISO string
+  lastMatchAt?: string;        // ISO string
+  matchCount: number;
+  muted: boolean;
+}
+
+export interface WatchlistMatch {
+  item: WatchlistItem;
+  cluster: StoryCluster;
+  matchedKeywords: string[];
+  seenAt: string;
+}

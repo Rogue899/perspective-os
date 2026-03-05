@@ -4,7 +4,8 @@
     { "source": "/api/ai",        "destination": "/api/ai.js" },
     { "source": "/api/gdelt/:path*", "destination": "/api/gdelt.js" },
     { "source": "/api/acled",    "destination": "/api/acled.js" },
-    { "source": "/api/embed",    "destination": "/api/embed.js" }
+    { "source": "/api/embed",    "destination": "/api/embed.js" },
+    { "source": "/api/finance",  "destination": "/api/finance.js" }
   ],
   "headers": [
     {
