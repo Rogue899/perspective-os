@@ -6,12 +6,12 @@
 
 import type { RawArticle } from '../types';
 import { getSourceById } from '../config/sources';
-import { fetchWithBreaker, getCircuitState } from './circuit-breaker';
+import { fetchWithBreaker, getCircuitState, getAllCircuitStates } from './circuit-breaker';
 
 const FEED_CACHE = new Map<string, { articles: RawArticle[]; fetchedAt: number }>();
 const CACHE_TTL = 5 * 60 * 1000; // 5 min client-side cache
 
-export { getCircuitState }; // re-export for UI status badges
+export { getCircuitState, getAllCircuitStates }; // re-export for UI status badges
 
 export async function fetchFeed(sourceId: string, topic = 'world news'): Promise<RawArticle[]> {
   const source = getSourceById(sourceId);
@@ -65,7 +65,7 @@ function parseRSS(xml: string, sourceId: string, sourceName: string): RawArticle
       ? Array.from(doc.querySelectorAll('entry'))
       : Array.from(doc.querySelectorAll('item'));
 
-    return items.slice(0, 25).map(item => {
+    return items.slice(0, 12).map(item => {
       const get = (tag: string) => item.querySelector(tag)?.textContent?.trim() ?? '';
 
       const title = get('title');

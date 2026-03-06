@@ -18,9 +18,9 @@
 
 import type { KeywordHit, KeywordHitSource } from '../types';
 
-const CHECK_INTERVAL_MS = 90_000; // 90 seconds between full sweeps
-const MAX_ITEMS_PER_SOURCE = 5;
-const MAX_HITS_STORED = 100;      // caller should cap; exported for reference
+const CHECK_INTERVAL_MS = 120_000; // 2 minutes between sweeps (was 90s)
+const MAX_ITEMS_PER_SOURCE = 3;    // reduced from 5 to limit memory
+const MAX_HITS_STORED = 100;       // caller should cap; exported for reference
 
 // ─── Module-level singleton state ────────────────────────────────────────────
 let _keywords: string[]               = [];
@@ -78,11 +78,12 @@ export function resetSeenUrls(): void {
 async function runSweep(): Promise<void> {
   if (_keywords.length === 0 || !_onHit) return;
 
+  // 2 fetches per keyword (Google News + Reddit only — Nitter is usually down)
+  // Run sequentially in pairs to avoid saturating the dev server connection pool
   const results = await Promise.allSettled(
     _keywords.flatMap(keyword => [
       fetchGoogleNewsHits(keyword),
       fetchRedditHits(keyword),
-      fetchNitterHits(keyword),
     ])
   );
 
@@ -130,21 +131,6 @@ async function fetchRedditHits(keyword: string): Promise<KeywordHit[]> {
   }
 }
 
-async function fetchNitterHits(keyword: string): Promise<KeywordHit[]> {
-  const clean = stripPrefix(keyword);
-  // Nitter public search RSS (X mirror — no key required)
-  const rssUrl = `https://nitter.net/search/rss?f=tweets&q=${encodeURIComponent(clean)}&lang=en`;
-  const proxyUrl = `/api/rss-proxy?url=${encodeURIComponent(rssUrl)}`;
-
-  try {
-    const res = await fetch(proxyUrl, { signal: AbortSignal.timeout(6000) });
-    if (!res.ok) return [];
-    const xml = await res.text();
-    return parseRssItems(xml, keyword, 'meta-og', 'link', 'title', 'description', 'pubDate');
-  } catch {
-    return [];
-  }
-}
 
 // ─── XML parsers ──────────────────────────────────────────────────────────────
 

@@ -6,8 +6,27 @@
  */
 
 import type { RawArticle, ScoredArticle, StoryCluster } from '../types';
-import { classifyWithAI } from '../services/ai';
+import { classifyWithAI, classifyWithKeywords } from '../services/ai';
 import { getSourceById } from '../config/sources';
+
+// ─── Concurrency limiter — prevents 750 parallel HTTP calls ───────────────────
+async function limitedParallel<T>(
+  tasks: Array<() => Promise<T>>,
+  maxConcurrent = 5,
+): Promise<T[]> {
+  const results: T[] = new Array(tasks.length);
+  let nextIdx = 0;
+
+  async function worker(): Promise<void> {
+    while (nextIdx < tasks.length) {
+      const i = nextIdx++;
+      results[i] = await tasks[i]();
+    }
+  }
+
+  await Promise.all(Array.from({ length: maxConcurrent }, worker));
+  return results;
+}
 
 const SIMILARITY_THRESHOLD = 0.15;  // min Jaccard to cluster
 const TIME_WINDOW_MS = 4 * 60 * 60 * 1000; // 4 hours
@@ -81,20 +100,42 @@ function inferGeo(text: string): { lat: number; lng: number; name: string } | un
 
 // ─── Main cluster function ────────────────────────────────────────────────────
 export async function clusterArticles(articles: RawArticle[]): Promise<StoryCluster[]> {
-  // Step 1: Classify articles (keyword fallback is instant)
-  const scored: ScoredArticle[] = await Promise.all(
-    articles.map(async (a) => {
-      const classification = await classifyWithAI(`${a.title} ${a.description}`.slice(0, 300));
-      return {
-        ...a,
-        severity: classification.severity as ScoredArticle['severity'],
-        category: classification.category as ScoredArticle['category'],
-        sentiment: classification.sentiment,
-        entities: classification.entities,
-        geoHint: inferGeo(`${a.title} ${a.description}`),
-      };
-    })
-  );
+  // Step 1: Classify articles
+  // Strategy: keyword fallback is synchronous and "good enough" for most articles.
+  // Only call the AI for articles where the keyword guesser returns 'general'
+  // (ambiguous content) — and cap at MAX_AI_CALLS to avoid flooding the server.
+  const MAX_AI_CALLS = 20;
+  let aiCallsUsed = 0;
+
+  const tasks = articles.map(a => async (): Promise<ScoredArticle> => {
+    const text = `${a.title} ${a.description}`.slice(0, 300);
+    const keywordResult = classifyWithKeywords(text);
+
+    let classification = keywordResult;
+
+    // Only upgrade to AI if keyword classifier is uncertain AND budget remains
+    if (keywordResult.category === 'general' && aiCallsUsed < MAX_AI_CALLS) {
+      aiCallsUsed++;
+      try {
+        const aiResult = await classifyWithAI(text);
+        classification = aiResult;
+      } catch {
+        // Keep keyword result
+      }
+    }
+
+    return {
+      ...a,
+      severity: classification.severity as ScoredArticle['severity'],
+      category: classification.category as ScoredArticle['category'],
+      sentiment: classification.sentiment,
+      entities: classification.entities,
+      geoHint: inferGeo(`${a.title} ${a.description}`),
+    };
+  });
+
+  // Run with max 5 concurrent AI calls to avoid overwhelming the dev server
+  const scored = await limitedParallel(tasks, 5);
 
   // Step 2: Cluster by Jaccard + time window
   const clusters: StoryCluster[] = [];
