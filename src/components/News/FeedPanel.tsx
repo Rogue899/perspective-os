@@ -108,6 +108,7 @@ export function FeedPanel({ onRefresh, defaultGrid }: { onRefresh?: () => void; 
   const [keywordsLoading, setKeywordsLoading] = useState(false);
   const [selectedKeyword, setSelectedKeyword] = useState<string | null>(null);
   const [hitsExpanded, setHitsExpanded] = useState(false);
+  const [gridCols, setGridCols] = useState(2); // 2–4 columns in grid view
   const allSources = getAllSources();
   const isFetching = useRef(false);
 
@@ -461,6 +462,25 @@ export function FeedPanel({ onRefresh, defaultGrid }: { onRefresh?: () => void; 
           </button>
         </div>
 
+        {/* Grid density +/- (only in grid mode) */}
+        {viewMode === 'grid' && (
+          <div className="flex items-center border border-border/60 rounded overflow-hidden">
+            <button
+              onClick={() => setGridCols(c => Math.max(2, c - 1))}
+              disabled={gridCols <= 2}
+              title="Fewer columns"
+              className="px-1.5 py-1 text-[10px] font-mono text-dim hover:text-white hover:bg-white/5 disabled:opacity-30 transition-colors"
+            >−</button>
+            <span className="px-1 text-[10px] font-mono text-dim">{gridCols}</span>
+            <button
+              onClick={() => setGridCols(c => Math.min(4, c + 1))}
+              disabled={gridCols >= 4}
+              title="More columns"
+              className="px-1.5 py-1 text-[10px] font-mono text-dim hover:text-white hover:bg-white/5 disabled:opacity-30 transition-colors"
+            >+</button>
+          </div>
+        )}
+
         <Filter size={10} className="text-dim" />
         <select
           value={minSources}
@@ -731,12 +751,12 @@ export function FeedPanel({ onRefresh, defaultGrid }: { onRefresh?: () => void; 
       {/* Stories list / grid */}
       <div className={`flex-1 overflow-y-auto ${
         viewMode === 'grid'
-          ? 'grid grid-cols-2 gap-2 p-2 content-start'
+          ? `grid gap-2 p-2 content-start`
           : 'divide-y divide-border/50 px-2'
-      }`}>
+      }`} style={viewMode === 'grid' ? { gridTemplateColumns: `repeat(${gridCols}, minmax(0, 1fr))` } : undefined}>
         {loading && clusters.length === 0 && (
           <div className={`flex flex-col items-center gap-3 py-12 text-dim ${
-            viewMode === 'grid' ? 'col-span-2' : ''
+            viewMode === 'grid' ? 'col-span-full' : ''
           }`}>
             <div className="w-6 h-6 border-2 border-accent border-t-transparent rounded-full animate-spin" />
             <span className="text-xs font-mono">
@@ -748,7 +768,7 @@ export function FeedPanel({ onRefresh, defaultGrid }: { onRefresh?: () => void; 
 
         {!loading && filtered.length === 0 && (
           <div className={`py-12 text-center space-y-2 ${
-            viewMode === 'grid' ? 'col-span-2' : ''
+            viewMode === 'grid' ? 'col-span-full' : ''
           }`}>
             <p className="text-xs text-dim font-mono">No stories match current filters</p>
             {(filter !== 'all' || sourceFilter !== 'all' || geoActive || geoScope !== 'global') && (
