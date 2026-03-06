@@ -2,12 +2,12 @@ import { useEffect, useState, useCallback, useRef } from 'react';
 import { useApp } from '../../context/AppContext';
 import { StoryCard, StoryGridCard } from './StoryCard';
 import { getAllSources, getSourceById } from '../../config/sources';
-import { fetchAllFeeds, getAllCircuitStates } from '../../services/rss';
+import { fetchAllFeeds } from '../../services/rss';
 import { clusterArticles } from '../../utils/story-cluster';
 import { getTopicFeed, gdeltToRaw, type GdeltTopic } from '../../services/gdelt';
 import { detectUserLocation } from '../../services/geo';
 import type { GeoContext } from '../../services/geo';
-import type { CircuitState } from '../../services/circuit-breaker';
+import { getAllCircuitStates, type CircuitState } from '../../services/circuit-breaker';
 import { generateKeywords } from '../../services/ai';
 import { Filter, Wifi, WifiOff, MapPin, X, Zap, AlertTriangle, Sparkles, Radio, LayoutList, LayoutGrid, Globe } from 'lucide-react';
 import type { EventCategory } from '../../types';
@@ -113,6 +113,11 @@ export function FeedPanel({ onRefresh, defaultGrid }: { onRefresh?: () => void; 
   const [hitsExpanded, setHitsExpanded] = useState(false);
   const [gridCols, setGridCols] = useState(2); // 2–4 columns in grid view
   const allSources = getAllSources();
+  const enabledSourceIds = (settings.enabledSources.length ? settings.enabledSources : allSources.map(s => s.id))
+    .filter(id => {
+      const src = getSourceById(id);
+      return !!src?.rss;
+    });
   const isFetching = useRef(false);
 
   // Haversine distance helper for map→feed proximity filter
@@ -201,7 +206,7 @@ export function FeedPanel({ onRefresh, defaultGrid }: { onRefresh?: () => void; 
       dispatch({ type: 'SET_LAST_REFRESH', payload: new Date() });
 
       // Update circuit breaker status badges after fetch completes
-      setFeedStatuses(getAllCircuitStates().filter(s => s.state !== 'closed'));
+      setFeedStatuses(getAllCircuitStates());
     } catch (err) {
       console.error('[Feed] Refresh failed:', err);
     } finally {
@@ -699,13 +704,42 @@ export function FeedPanel({ onRefresh, defaultGrid }: { onRefresh?: () => void; 
         ))}
       </div>
 
+      {/* Per-source circuit states: green closed, amber half-open, red open */}
+      {enabledSourceIds.length > 0 && (
+        <div className="px-3 py-1.5 border-b border-border/60 shrink-0 overflow-x-auto">
+          <div className="flex items-center gap-1.5 min-w-max">
+            <span className="text-[9px] font-mono text-dim uppercase tracking-wider mr-1">Feeds</span>
+            {enabledSourceIds.map(sourceId => {
+              const src = getSourceById(sourceId);
+              if (!src) return null;
+              const state = feedStatuses.find(s => s.feedId === sourceId)?.state ?? 'closed';
+              const dotClass = state === 'open'
+                ? 'bg-red-400'
+                : state === 'half-open'
+                ? 'bg-amber-400'
+                : 'bg-green-400';
+              return (
+                <span
+                  key={sourceId}
+                  title={`${src.name}: ${state}`}
+                  className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded border border-border text-[9px] font-mono text-dim"
+                >
+                  <span className={`w-1.5 h-1.5 rounded-full ${dotClass}`} />
+                  {src.name}
+                </span>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
       {/* Feed circuit-breaker status badges — only visible when feeds are down/degraded */}
-      {feedStatuses.length > 0 && (
+      {feedStatuses.some(s => s.state !== 'closed') && (
         <div className="px-3 py-1.5 bg-red-500/5 border-b border-red-500/20 shrink-0">
           <div className="flex items-center gap-1.5 flex-wrap">
             <AlertTriangle size={9} className="text-red-400 shrink-0" />
             <span className="text-[9px] font-mono text-red-400 uppercase tracking-wider">Feed issues:</span>
-            {feedStatuses.map(s => (
+            {feedStatuses.filter(s => s.state !== 'closed').map(s => (
               <span
                 key={s.feedId}
                 title={s.error ?? 'Feed unavailable'}
