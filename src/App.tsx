@@ -179,12 +179,10 @@ function Dashboard() {
       <Header onRefresh={handleRefresh} onSettings={() => setShowSettings(true)} onNotifications={() => setShowNotifications(p => !p)} />
 
       <main className="flex-1 flex overflow-hidden relative">
-        {/* Left column — feed panel hidden entirely in map mode for full map focus */}
-        {activePanel !== 'map' && (
-          <div className="flex flex-col w-full xl:w-[380px] border-r border-border shrink-0 overflow-hidden">
-            <FeedPanel onRefresh={handleRefresh} />
-          </div>
-        )}
+        {/* Left column — feed panel */}
+        <div className="flex flex-col w-full xl:w-[380px] border-r border-border shrink-0 overflow-hidden">
+          <FeedPanel onRefresh={handleRefresh} />
+        </div>
 
         {/* Center — map */}
         <div className="flex-1 overflow-hidden">
