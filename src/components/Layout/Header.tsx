@@ -1,5 +1,6 @@
+import { useEffect, useState } from 'react';
 import { useApp } from '../../context/AppContext';
-import { RefreshCw, Settings, Globe, Newspaper, Brain, Tv, TrendingUp, Bell } from 'lucide-react';
+import { RefreshCw, Settings, Globe, Newspaper, Brain, Tv, TrendingUp, Bell, Sun, Moon } from 'lucide-react';
 
 interface HeaderProps {
   onRefresh: () => void;
@@ -12,6 +13,15 @@ type PanelId = 'news' | 'map' | 'analysis' | 'live' | 'finance' | 'watchlist';
 export function Header({ onRefresh, onSettings, onNotifications }: HeaderProps) {
   const { state, dispatch } = useApp();
   const { loading, lastRefresh, activePanel, watchlist, clusters, keywordHits } = state;
+  const [theme, setTheme] = useState<'dark' | 'light'>(() => {
+    const saved = localStorage.getItem('pos-theme');
+    return saved === 'light' ? 'light' : 'dark';
+  });
+
+  useEffect(() => {
+    document.documentElement.dataset.theme = theme;
+    localStorage.setItem('pos-theme', theme);
+  }, [theme]);
 
   const newNotifCount = (keywordHits?.filter((h: { isNew: boolean }) => h.isNew).length ?? 0) +
     clusters.filter(c => c.severity === 'critical').length;
@@ -99,6 +109,13 @@ export function Header({ onRefresh, onSettings, onNotifications }: HeaderProps) 
             )}
           </button>
         )}
+        <button
+          onClick={() => setTheme(prev => (prev === 'dark' ? 'light' : 'dark'))}
+          className="text-dim hover:text-white transition-colors"
+          title={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
+        >
+          {theme === 'dark' ? <Sun size={13} /> : <Moon size={13} />}
+        </button>
         <button
           onClick={onSettings}
           className="text-dim hover:text-white transition-colors"

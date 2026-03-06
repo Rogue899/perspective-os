@@ -4,11 +4,11 @@ export default {
   theme: {
     extend: {
       colors: {
-        bg:      '#0a0e0a',
-        surface: '#111711',
-        border:  '#1e2a1e',
-        accent:  '#22c55e',
-        dim:     '#6b7280',
+        bg:      'rgb(var(--color-bg) / <alpha-value>)',
+        surface: 'rgb(var(--color-surface) / <alpha-value>)',
+        border:  'rgb(var(--color-border) / <alpha-value>)',
+        accent:  'rgb(var(--color-accent) / <alpha-value>)',
+        dim:     'rgb(var(--color-dim) / <alpha-value>)',
         // Bias colors
         right:   '#ef4444',
         left:    '#3b82f6',
