@@ -161,7 +161,7 @@ export const NEWS_SOURCES: NewsSource[] = [
     country: 'Israel',
     tier: 'tier2',
     sourceType: 'mainstream',
-    rss: '/api/rss-proxy?url=https://www.timesofisrael.com/feed&id=timesofisrael',
+    rss: '/api/rss-proxy?url=https://www.timesofisrael.com/feed/&id=timesofisrael',
     description: 'Israeli center. English-language. More balanced than most Israeli outlets. Pro-Israel framing.',
   },
 
@@ -303,7 +303,7 @@ export const NEWS_SOURCES: NewsSource[] = [
     country: 'Singapore',
     tier: 'tier1',
     sourceType: 'mainstream',
-    rss: '/api/rss-proxy?url=https://www.channelnewsasia.com/rss-output/8395884&id=cna',
+    rss: '/api/rss-proxy?url=https://www.channelnewsasia.com/rssfeeds/8395986&id=cna',
     description: 'Channel News Asia. Singapore. Strong Asia-Pacific and MENA coverage. Generally balanced.',
   },
   {
