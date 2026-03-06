@@ -243,23 +243,54 @@ export function PerspectivePanel() {
     };
 
     const fetchX = async (): Promise<SocialPost[]> => {
-      const url = `https://nitter.net/search/rss?f=tweets&q=${q}`;
-      const res = await fetch(`/api/rss-proxy?url=${encodeURIComponent(url)}`, { signal: AbortSignal.timeout(6000) });
-      if (!res.ok) return [];
+      const candidates = [
+        `https://nitter.net/search/rss?f=tweets&q=${q}`,
+        `https://nitter.net/search/rss?q=${q}`,
+      ];
 
-      const doc = new DOMParser().parseFromString(await res.text(), 'text/xml');
-      const entries = Array.from(doc.querySelectorAll('item')).slice(0, 5);
+      for (const url of candidates) {
+        try {
+          const res = await fetch(`/api/rss-proxy?url=${encodeURIComponent(url)}`, { signal: AbortSignal.timeout(7000) });
+          if (!res.ok) continue;
 
-      return entries.map(item => {
-        const rawUrl = item.querySelector('link')?.textContent?.trim() ?? '';
-        const xUrl = rawUrl.includes('nitter.net') ? rawUrl.replace('nitter.net', 'x.com') : rawUrl;
-        return {
-          title: item.querySelector('title')?.textContent?.trim() ?? '',
-          url: xUrl,
-          author: item.querySelector('creator, dc\\:creator')?.textContent?.trim() ?? '@unknown',
-          ago: formatAgo(item.querySelector('pubDate')?.textContent ?? ''),
-        };
-      }).filter(p => p.title && p.url);
+          const xml = await res.text();
+          const doc = new DOMParser().parseFromString(xml, 'text/xml');
+
+          const rssItems = Array.from(doc.querySelectorAll('item'));
+          const atomItems = Array.from(doc.querySelectorAll('entry'));
+          const entries = (rssItems.length > 0 ? rssItems : atomItems).slice(0, 6);
+
+          const posts = entries.map(entry => {
+            const linkNode = entry.querySelector('link');
+            const rawUrl =
+              linkNode?.getAttribute('href')?.trim() ||
+              linkNode?.textContent?.trim() ||
+              entry.querySelector('id')?.textContent?.trim() ||
+              '';
+            const xUrl = rawUrl.replace(/https?:\/\/nitter\.[^/]+/i, 'https://x.com');
+            return {
+              title: entry.querySelector('title')?.textContent?.trim() ?? '',
+              url: xUrl,
+              author:
+                entry.querySelector('dc\\:creator')?.textContent?.trim() ||
+                entry.querySelector('creator')?.textContent?.trim() ||
+                entry.querySelector('author > name')?.textContent?.trim() ||
+                '@unknown',
+              ago: formatAgo(
+                entry.querySelector('pubDate')?.textContent ||
+                entry.querySelector('updated')?.textContent ||
+                ''
+              ),
+            };
+          }).filter(p => p.title && p.url);
+
+          if (posts.length > 0) return posts;
+        } catch {
+          /* try next candidate */
+        }
+      }
+
+      return [];
     };
 
     Promise.allSettled([fetchReddit(), fetchX()])
