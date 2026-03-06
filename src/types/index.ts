@@ -13,7 +13,7 @@ export interface NewsSource {
   bias: BiasLabel;
   biasColor: BiasColor;
   tier?: 'tier1' | 'tier2' | 'tier3';
-  sourceType?: 'mainstream' | 'independent' | 'social' | 'rumor' | 'state';
+  sourceType?: 'mainstream' | 'independent' | 'social' | 'rumor' | 'state' | 'intelligence';
   lean: number;       // -3 (hard left/state) to +3 (hard right)
   region: string;
   country: string;
@@ -28,7 +28,7 @@ export interface LocalMediaSource {
   url: string;
   country?: string;
   city?: string;
-  sourceType?: 'mainstream' | 'independent' | 'social' | 'rumor' | 'state';
+  sourceType?: 'mainstream' | 'independent' | 'social' | 'rumor' | 'state' | 'intelligence';
   tier?: 'tier1' | 'tier2' | 'tier3';
 }
 
@@ -54,7 +54,7 @@ export interface ScoredArticle extends RawArticle {
 export type EventCategory =
   | 'conflict' | 'protest' | 'disaster' | 'diplomatic'
   | 'economic' | 'terrorism' | 'cyber' | 'health'
-  | 'military' | 'infrastructure' | 'tech' | 'general';
+  | 'military' | 'infrastructure' | 'tech' | 'science' | 'sport' | 'general';
 
 // ─── Story cluster (same event, multiple sources) ─────────────────────────────
 export interface StoryCluster {
@@ -191,4 +191,19 @@ export interface WatchlistMatch {
   cluster: StoryCluster;
   matchedKeywords: string[];
   seenAt: string;
+}
+
+// ─── Global keyword monitor ────────────────────────────────────────────────────
+export type KeywordHitSource = 'google-news' | 'reddit' | 'meta-og';
+
+export interface KeywordHit {
+  id: string;                    // hash of url
+  keyword: string;               // the keyword that matched
+  title: string;
+  url: string;
+  source: KeywordHitSource;      // where it was found
+  publishedAt: string;           // ISO string
+  snippet?: string;              // short excerpt / description
+  seenAt: string;                // ISO string — when monitor found it
+  isNew: boolean;                // true on first-seen, set to false after display
 }

@@ -3,12 +3,28 @@ import { getSourceById, getBiasTextClass, getBiasBgClass } from '../../config/so
 import { useApp } from '../../context/AppContext';
 import { AlertTriangle, Eye, Clock, ShieldAlert } from 'lucide-react';
 
+const SEVERITY_TOP: Record<string, string> = {
+  critical: 'border-t-red-500',
+  high:     'border-t-orange-500',
+  medium:   'border-t-yellow-600',
+  low:      'border-t-border',
+  info:     'border-t-border',
+};
+
 const SEVERITY_COLORS: Record<string, string> = {
   critical: 'text-red-400 border-l-red-500',
   high:     'text-orange-400 border-l-orange-500',
   medium:   'text-yellow-400 border-l-yellow-600',
   low:      'text-dim border-l-border',
   info:     'text-dim border-l-border',
+};
+
+const SEV_TEXT: Record<string, string> = {
+  critical: 'text-red-400',
+  high:     'text-orange-400',
+  medium:   'text-yellow-400',
+  low:      'text-dim',
+  info:     'text-dim',
 };
 
 function timeAgo(date: Date): string {
@@ -19,6 +35,73 @@ function timeAgo(date: Date): string {
   if (m < 60) return `${m}m ago`;
   if (h < 24) return `${h}h ago`;
   return `${Math.floor(h / 24)}d ago`;
+}
+
+export function StoryGridCard({ cluster }: { cluster: StoryCluster }) {
+  const { dispatch } = useApp();
+  const sevTop = SEVERITY_TOP[cluster.severity] ?? SEVERITY_TOP.low;
+  const sevText = SEV_TEXT[cluster.severity] ?? SEV_TEXT.low;
+  const hasMultipleViews = cluster.sourceIds.length >= 2;
+  const perspectiveHigh = cluster.perspectiveScore >= 0.4;
+
+  return (
+    <article
+      className={`border border-border/60 border-t-2 ${sevTop} rounded p-2.5 cursor-pointer hover:bg-white/[0.04] hover:border-accent/30 transition-colors flex flex-col gap-1.5 group bg-surface/40`}
+      onClick={() => dispatch({ type: 'SELECT_CLUSTER', payload: cluster })}
+    >
+      {/* Tags row */}
+      <div className="flex items-center gap-1 flex-wrap">
+        {cluster.severity === 'critical' && (
+          <span className="flex items-center gap-0.5 text-[8px] font-mono text-red-400 bg-red-500/10 px-1 py-0.5 rounded border border-red-500/20 uppercase tracking-wider">
+            <AlertTriangle size={7} /> Crit
+          </span>
+        )}
+        <span className="text-[8px] font-mono text-dim bg-white/5 px-1 py-0.5 rounded uppercase tracking-wider">
+          {cluster.category}
+        </span>
+        {perspectiveHigh && (
+          <span title="High bias divergence" className="ml-auto shrink-0">
+            <Eye size={9} className={sevText} />
+          </span>
+        )}
+      </div>
+
+      {/* Headline */}
+      <h3 className="text-[11px] font-medium text-white/90 leading-snug line-clamp-3 group-hover:text-white transition-colors flex-1">
+        {cluster.headline}
+      </h3>
+
+      {/* Source chips — max 3 */}
+      <div className="flex items-center flex-wrap gap-1">
+        {cluster.sourceIds.slice(0, 3).map(sid => {
+          const src = getSourceById(sid);
+          if (!src) return null;
+          return (
+            <span
+              key={sid}
+              className={`text-[8px] font-mono px-1 py-0.5 rounded border ${getBiasBgClass(src.biasColor)} ${getBiasTextClass(src.biasColor)}`}
+            >
+              {src.name}
+            </span>
+          );
+        })}
+        {cluster.sourceIds.length > 3 && (
+          <span className="text-[8px] font-mono text-dim">+{cluster.sourceIds.length - 3}</span>
+        )}
+      </div>
+
+      {/* Footer */}
+      <div className="flex items-center justify-between">
+        <span className="flex items-center gap-0.5 text-[9px] text-dim font-mono">
+          <Clock size={8} />
+          {timeAgo(cluster.updatedAt)}
+        </span>
+        {hasMultipleViews && (
+          <span className="text-[8px] font-mono text-accent">compare →</span>
+        )}
+      </div>
+    </article>
+  );
 }
 
 export function StoryCard({ cluster }: { cluster: StoryCluster }) {

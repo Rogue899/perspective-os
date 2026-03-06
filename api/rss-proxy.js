@@ -31,6 +31,18 @@ const ALLOWED_DOMAINS = [
   'nitter.net',            // X/Twitter mirror RSS
   'www.reddit.com',        // Reddit community/local feeds
   'www.mtv.com.lb',        // MTV Lebanon local feed
+  'www.the961.com',        // The 961 — English-language Lebanese news portal
+  // EU / country sources
+  'www.rfi.fr',            // RFI — Radio France Internationale (English)
+  'www.spiegel.de',        // Der Spiegel International (Germany)
+  'feeds.skynews.com',     // Sky News UK world feed
+  'www.ansa.it',           // ANSA — Italian national wire service
+  'kyivindependent.com',   // Kyiv Independent (Ukraine English)
+  'notesfrompoland.com',   // Notes from Poland
+  'www.politico.eu',       // Politico Europe
+  'euobserver.com',        // EUobserver
+  'mg.co.za',              // Mail & Guardian (South Africa)
+  'allafrica.com',         // AllAfrica aggregator
   'www.whitehouse.gov',    // U.S. White House
   'www.gov.uk',            // UK government feeds
   'rsshub.app',            // RSSHub public instance

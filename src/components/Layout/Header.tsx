@@ -4,13 +4,17 @@ import { RefreshCw, Settings, Globe, Newspaper, Brain, Tv, TrendingUp, Bell } fr
 interface HeaderProps {
   onRefresh: () => void;
   onSettings: () => void;
+  onNotifications?: () => void;
 }
 
 type PanelId = 'news' | 'map' | 'analysis' | 'live' | 'finance' | 'watchlist';
 
-export function Header({ onRefresh, onSettings }: HeaderProps) {
+export function Header({ onRefresh, onSettings, onNotifications }: HeaderProps) {
   const { state, dispatch } = useApp();
-  const { loading, lastRefresh, activePanel, watchlist, clusters } = state;
+  const { loading, lastRefresh, activePanel, watchlist, clusters, keywordHits } = state;
+
+  const newNotifCount = (keywordHits?.filter((h: { isNew: boolean }) => h.isNew).length ?? 0) +
+    clusters.filter(c => c.severity === 'critical').length;
 
   // Count unread watchlist matches
   const watchlistHits = watchlist.filter(w => !w.muted).reduce((acc, w) => {
@@ -81,6 +85,20 @@ export function Header({ onRefresh, onSettings }: HeaderProps) {
         >
           <RefreshCw size={13} className={loading ? 'animate-spin text-accent' : ''} />
         </button>
+        {onNotifications && (
+          <button
+            onClick={onNotifications}
+            className="relative text-dim hover:text-white transition-colors"
+            title="Notifications"
+          >
+            <Bell size={13} />
+            {newNotifCount > 0 && (
+              <span className="absolute -top-1 -right-1 min-w-[12px] h-[12px] bg-red-500 text-white text-[7px] font-bold rounded-full flex items-center justify-center px-0.5">
+                {newNotifCount > 9 ? '9+' : newNotifCount}
+              </span>
+            )}
+          </button>
+        )}
         <button
           onClick={onSettings}
           className="text-dim hover:text-white transition-colors"

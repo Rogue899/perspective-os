@@ -1,7 +1,9 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import maplibregl from 'maplibre-gl';
-import { Locate, LocateFixed, LoaderCircle, MessageCircle, Video, X } from 'lucide-react';
+import { Locate, LocateFixed, LoaderCircle, MessageCircle, X } from 'lucide-react';
 import { fetchGdeltEvents } from '../../services/gdelt';
+import { fetchEONETEvents, EONET_CATEGORY_COLOR, EONET_CATEGORY_ICON } from '../../services/eonet';
+import type { EONETEvent } from '../../services/eonet';
 import { useApp } from '../../context/AppContext';
 import type { GdeltEvent } from '../../types';
 import { buildPublicVideoLinks } from '../../utils/public-video-links';
@@ -42,6 +44,7 @@ export function MapView() {
   const { clusters, selectedCluster } = state;
   const [mapReady, setMapReady] = useState(false);
   const [conflictEvents, setConflictEvents] = useState<GdeltEvent[]>([]);
+  const [eonetEvents, setEonetEvents] = useState<EONETEvent[]>([]);
   const [geoState, setGeoState] = useState<'idle' | 'loading' | 'located' | 'error'>('idle');
   const [geoError, setGeoError] = useState('');
   const [userCoords, setUserCoords] = useState<{ lat: number; lng: number } | null>(null);
@@ -84,10 +87,26 @@ export function MapView() {
 
   const linkTone: Record<string, string> = {
     youtube: 'hover:border-red-500/40 hover:bg-red-500/5',
-    rumble: 'hover:border-green-500/40 hover:bg-green-500/5',
-    kick: 'hover:border-emerald-500/40 hover:bg-emerald-500/5',
-    reddit: 'hover:border-orange-500/40 hover:bg-orange-500/5',
-    x: 'hover:border-blue-500/40 hover:bg-blue-500/5',
+    rumble:  'hover:border-green-500/40 hover:bg-green-500/5',
+    kick:    'hover:border-emerald-500/40 hover:bg-emerald-500/5',
+    reddit:  'hover:border-orange-500/40 hover:bg-orange-500/5',
+    x:       'hover:border-blue-500/40 hover:bg-blue-500/5',
+  };
+
+  const platformIcon: Record<string, string> = {
+    youtube: '▶',
+    rumble:  '🎬',
+    kick:    '⚡',
+    reddit:  '🟠',
+    x:       '𝕏',
+  };
+
+  const platformShort: Record<string, string> = {
+    youtube: 'YouTube',
+    rumble:  'Rumble',
+    kick:    'Kick',
+    reddit:  'Reddit',
+    x:       'X',
   };
 
   const locateMe = useCallback(() => {
@@ -204,6 +223,33 @@ export function MapView() {
       m.setStyle(FALLBACK_STYLE as any);
     });
 
+    // Right-click → reverse geocode → show area news popup
+    m.on('contextmenu', async (ev) => {
+      ev.preventDefault?.();
+      const { lat, lng } = ev.lngLat;
+      try {
+        const resp = await fetch(
+          `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${lat}&lon=${lng}&zoom=6`,
+          { headers: { 'Accept-Language': 'en' } }
+        );
+        const data = await resp.json();
+        const name =
+          data.address?.city       ||
+          data.address?.town       ||
+          data.address?.state      ||
+          data.address?.country    ||
+          'this area';
+        setFloatingLocation({ name, lat, lng });
+        setFloatingTab('news');
+      } catch {
+        setFloatingLocation({ name: 'this area', lat, lng });
+        setFloatingTab('news');
+      }
+    });
+
+    // Pointer cursor on hover over map canvas (indicates right-click is available)
+    m.getCanvas().title = 'Right-click anywhere to get news for that area';
+
     map.current = m;
     return () => {
       m.remove();
@@ -216,6 +262,14 @@ export function MapView() {
     if (!mapReady) return;
     fetchGdeltEvents().then(events => {
       setConflictEvents(events.slice(0, 200));
+    });
+  }, [mapReady]);
+
+  // Fetch NASA EONET natural events
+  useEffect(() => {
+    if (!mapReady) return;
+    fetchEONETEvents().then(events => {
+      setEonetEvents(events);
     });
   }, [mapReady]);
 
@@ -258,6 +312,69 @@ export function MapView() {
       });
     } catch { /* style not ready */ }
   }, [conflictEvents, mapReady]);
+
+  // Render NASA EONET natural event dots
+  useEffect(() => {
+    if (!map.current || !mapReady || eonetEvents.length === 0) return;
+    if (!map.current.isStyleLoaded()) return;
+
+    try { map.current.removeLayer('eonet-events'); } catch {}
+    try { map.current.removeSource('eonet-events'); } catch {}
+
+    const features = eonetEvents.map(e => ({
+      type: 'Feature' as const,
+      geometry: { type: 'Point' as const, coordinates: [e.lng, e.lat] },
+      properties: {
+        title:    e.title,
+        category: e.categoryId,
+        color:    EONET_CATEGORY_COLOR[e.categoryId] ?? '#10b981',
+        url:      e.url,
+        icon:     EONET_CATEGORY_ICON[e.categoryId] ?? '⚠',
+      },
+    }));
+
+    try {
+      map.current.addSource('eonet-events', {
+        type: 'geojson',
+        data: { type: 'FeatureCollection', features },
+      });
+      map.current.addLayer({
+        id: 'eonet-events',
+        type: 'circle',
+        source: 'eonet-events',
+        paint: {
+          'circle-radius': 6,
+          'circle-color': ['get', 'color'],
+          'circle-opacity': 0.75,
+          'circle-stroke-width': 1.5,
+          'circle-stroke-color': 'rgba(255,255,255,0.3)',
+        },
+      });
+
+      // Popup on click
+      map.current.on('click', 'eonet-events', (ev) => {
+        const props = ev.features?.[0]?.properties;
+        if (!props) return;
+        new maplibregl.Popup({ closeButton: true, className: 'pos-popup' })
+          .setLngLat(ev.lngLat)
+          .setHTML(`<div style="font-family:monospace;font-size:11px;padding:6px;max-width:200px">
+            <div style="color:#10b981;font-size:9px;text-transform:uppercase;letter-spacing:.05em;margin-bottom:4px">
+              ${props.icon ?? '⚠'} ${props.category ?? 'event'} · NASA EONET
+            </div>
+            <div style="color:white;margin-bottom:4px">${props.title}</div>
+            <a href="${props.url}" target="_blank" style="color:#06b6d4;font-size:9px">View on EONET ↗</a>
+          </div>`)
+          .addTo(map.current!);
+      });
+
+      map.current.on('mouseenter', 'eonet-events', () => {
+        if (map.current) map.current.getCanvas().style.cursor = 'pointer';
+      });
+      map.current.on('mouseleave', 'eonet-events', () => {
+        if (map.current) map.current.getCanvas().style.cursor = '';
+      });
+    } catch { /* style not ready */ }
+  }, [eonetEvents, mapReady]);
 
   // Render story cluster markers
   useEffect(() => {
@@ -404,8 +521,8 @@ export function MapView() {
                   rel="noopener noreferrer"
                   className={`flex items-center gap-2 p-2 rounded border border-border text-[11px] text-white ${linkTone[link.platform] || 'hover:border-accent/40 hover:bg-accent/5'}`}
                 >
-                  <Video size={12} className="text-accent" />
-                  {link.label}
+                  <span className="text-base leading-none">{platformIcon[link.platform] ?? '▶'}</span>
+                  <span>{platformShort[link.platform] ?? link.platform}: {floatingLocation?.name} news</span>
                 </a>
               ))}
               {userCoords && (
@@ -477,6 +594,26 @@ export function MapView() {
         <div className="border-t border-border pt-1.5 text-dim">
           {clusters.filter(c => c.geoHint).length} stories mapped
         </div>
+        {eonetEvents.length > 0 && (
+          <>
+            <div className="border-t border-border pt-1.5 text-dim uppercase tracking-wider">
+              Natural events ({eonetEvents.length})
+            </div>
+            {Object.entries(
+              eonetEvents.reduce<Record<string, number>>((acc, e) => {
+                acc[e.categoryId] = (acc[e.categoryId] ?? 0) + 1;
+                return acc;
+              }, {})
+            ).slice(0, 5).map(([catId, count]) => (
+              <div key={catId} className="flex items-center gap-2">
+                <div className="w-2.5 h-2.5 rounded-full" style={{ background: EONET_CATEGORY_COLOR[catId] ?? '#10b981' }} />
+                <span className="text-dim">
+                  {EONET_CATEGORY_ICON[catId] ?? '⚠'} {catId.replace(/_/g, ' ')} ({count})
+                </span>
+              </div>
+            ))}
+          </>
+        )}
       </div>
     </div>
   );

@@ -10,10 +10,12 @@
  * DISCLAIMER: AI analysis only. NOT financial advice.
  */
 
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import { useApp } from '../../context/AppContext';
-import { analyzePerspectives } from '../../services/ai';
-import { TrendingUp, TrendingDown, Minus, RefreshCw, AlertTriangle, ExternalLink } from 'lucide-react';
+import { TrendingUp, TrendingDown, Minus, RefreshCw, AlertTriangle, BarChart2, ExternalLink } from 'lucide-react';
+import {
+  AreaChart, Area, LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid,
+} from 'recharts';
 
 interface Quote {
   symbol: string;
@@ -50,6 +52,27 @@ interface SectorSignal {
   confidence: number;
 }
 
+type PricePt = { t: string; v: number };
+
+function Sparkline({ data, up }: { data: PricePt[]; up: boolean | null }) {
+  if (!data || data.length < 2) return <div className="h-8" />;
+  const color = up === null ? '#6b7280' : up ? '#22c55e' : '#ef4444';
+  return (
+    <ResponsiveContainer width="100%" height={32}>
+      <AreaChart data={data} margin={{ top: 2, right: 0, left: 0, bottom: 0 }}>
+        <defs>
+          <linearGradient id={`sg-${up}`} x1="0" y1="0" x2="0" y2="1">
+            <stop offset="5%" stopColor={color} stopOpacity={0.35} />
+            <stop offset="95%" stopColor={color} stopOpacity={0} />
+          </linearGradient>
+        </defs>
+        <Area type="monotone" dataKey="v" stroke={color} strokeWidth={1.2}
+          fill={`url(#sg-${up})`} dot={false} isAnimationActive={false} />
+      </AreaChart>
+    </ResponsiveContainer>
+  );
+}
+
 function ChangeArrow({ change }: { change: number | null }) {
   if (change === null) return <Minus size={11} className="text-gray-400" />;
   if (change > 0)  return <TrendingUp  size={11} className="text-green-400" />;
@@ -57,8 +80,9 @@ function ChangeArrow({ change }: { change: number | null }) {
   return <Minus size={11} className="text-gray-400" />;
 }
 
-function QuoteCard({ q }: { q: Quote }) {
+function QuoteCard({ q, history }: { q: Quote; history?: PricePt[] }) {
   const color = q.change === null ? 'text-gray-400' : q.change > 0 ? 'text-green-400' : q.change < 0 ? 'text-red-400' : 'text-gray-400';
+  const up = q.change === null ? null : q.change > 0;
   return (
     <div className="bg-surface border border-border rounded p-2 flex flex-col gap-1">
       <div className="text-[9px] font-mono text-dim truncate">{q.symbol}</div>
@@ -70,6 +94,7 @@ function QuoteCard({ q }: { q: Quote }) {
         <ChangeArrow change={q.change} />
         {q.change != null ? `${q.change > 0 ? '+' : ''}${q.change.toFixed(2)}%` : '—'}
       </div>
+      {history && history.length > 1 && <Sparkline data={history} up={up} />}
       <div className="text-[8px] font-mono text-dim truncate">{q.name}</div>
     </div>
   );
@@ -79,13 +104,16 @@ export function FinancePanel() {
   const { state } = useApp();
   const { clusters } = state;
 
-  const [quotes,    setQuotes]    = useState<Quote[]>([]);
-  const [crypto,    setCrypto]    = useState<CryptoCoin[]>([]);
-  const [polymarket, setPolymarket] = useState<PolymarketEntry[]>([]);
-  const [signals,   setSignals]   = useState<SectorSignal[]>([]);
+  const [quotes,       setQuotes]       = useState<Quote[]>([]);
+  const [crypto,       setCrypto]       = useState<CryptoCoin[]>([]);
+  const [polymarket,   setPolymarket]   = useState<PolymarketEntry[]>([]);
+  const [signals,      setSignals]      = useState<SectorSignal[]>([]);
+  const [priceHistory, setPriceHistory] = useState<Record<string, PricePt[]>>({});
+  const [chartSymbol,  setChartSymbol]  = useState<string | null>(null);
+  const priceHistoryRef = useRef<Record<string, PricePt[]>>({});
   const [loading,   setLoading]   = useState(false);
   const [aiLoading, setAiLoading] = useState(false);
-  const [tab, setTab]             = useState<'markets' | 'signals' | 'predictions'>('markets');
+  const [tab, setTab]             = useState<'markets' | 'signals' | 'predictions' | 'charts'>('markets');
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
 
   const fetchMarketData = useCallback(async () => {
@@ -96,7 +124,20 @@ export function FinancePanel() {
         fetch('/api/finance?type=crypto&ids=bitcoin,ethereum,solana,ripple').then(r => r.json()),
         fetch('/api/finance?type=polymarket').then(r => r.json()),
       ]);
-      if (qRes.status === 'fulfilled') setQuotes(qRes.value.quotes ?? []);
+      if (qRes.status === 'fulfilled') {
+        const qs: Quote[] = qRes.value.quotes ?? [];
+        setQuotes(qs);
+        // Append to rolling price history (keep last 30 pts)
+        const now = new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
+        const next = { ...priceHistoryRef.current };
+        for (const q of qs) {
+          if (q.price == null) continue;
+          const prev = next[q.symbol] ?? [];
+          next[q.symbol] = [...prev, { t: now, v: q.price }].slice(-30);
+        }
+        priceHistoryRef.current = next;
+        setPriceHistory({ ...next });
+      }
       if (cRes.status === 'fulfilled') setCrypto(cRes.value.crypto ?? []);
       if (pRes.status === 'fulfilled') setPolymarket(pRes.value.markets ?? []);
       setLastUpdated(new Date());
@@ -175,8 +216,9 @@ IMPORTANT: End with a disclaimer that this is AI analysis only, not financial ad
     if (clusters.length > 0) generateSignals();
   }, [clusters.length]); // eslint-disable-line
 
-  const TABS: Array<{ id: typeof tab; label: string }> = [
+  const TABS: Array<{ id: typeof tab; label: string; icon?: React.ReactNode }> = [
     { id: 'markets',     label: 'Markets' },
+    { id: 'charts',      label: 'Charts', icon: <BarChart2 size={10} /> },
     { id: 'signals',     label: 'AI Signals' },
     { id: 'predictions', label: 'Polymarket' },
   ];
@@ -218,7 +260,10 @@ IMPORTANT: End with a disclaimer that this is AI analysis only, not financial ad
                 : 'text-dim hover:text-white hover:bg-white/5'
             }`}
           >
-            {t.label}
+            <span className="flex items-center gap-1">
+              {t.icon && t.icon}
+              {t.label}
+            </span>
           </button>
         ))}
       </div>
@@ -235,7 +280,7 @@ IMPORTANT: End with a disclaimer that this is AI analysis only, not financial ad
                 <div className="text-[10px] text-dim font-mono">Loading market data…</div>
               ) : (
                 <div className="grid grid-cols-2 lg:grid-cols-3 gap-2">
-                  {quotes.map(q => <QuoteCard key={q.symbol} q={q} />)}
+                  {quotes.map(q => <QuoteCard key={q.symbol} q={q} history={priceHistory[q.symbol]} />)}
                 </div>
               )}
             </div>
@@ -262,6 +307,112 @@ IMPORTANT: End with a disclaimer that this is AI analysis only, not financial ad
             </div>
           </div>
         )}
+
+        {/* Charts tab */}
+        {tab === 'charts' && (() => {
+          const symbols = quotes.filter(q => (priceHistory[q.symbol]?.length ?? 0) >= 2).map(q => q.symbol);
+          const active = chartSymbol && symbols.includes(chartSymbol) ? chartSymbol : symbols[0] ?? null;
+          const chartData = active ? priceHistory[active] ?? [] : [];
+          const activeQ = quotes.find(q => q.symbol === active);
+          const up = activeQ?.change !== null && activeQ?.change !== undefined ? activeQ.change > 0 : null;
+          const lineColor = up === null ? '#06b6d4' : up ? '#22c55e' : '#ef4444';
+          const newsSignal = signals.find(s =>
+            active && s.relatedHeadlines.some(h => h.toLowerCase().includes(active.toLowerCase()))
+          );
+          return (
+            <div className="p-3 space-y-3">
+              {symbols.length === 0 ? (
+                <div className="text-[10px] text-dim font-mono text-center py-10">
+                  Price history builds as data refreshes (every 60s).<br />Check back shortly.
+                </div>
+              ) : (
+                <>
+                  {/* Symbol selector */}
+                  <div className="flex flex-wrap gap-1">
+                    {symbols.map(sym => (
+                      <button
+                        key={sym}
+                        onClick={() => setChartSymbol(sym)}
+                        className={`px-2 py-0.5 text-[9px] font-mono rounded border transition-colors ${
+                          active === sym
+                            ? 'border-accent text-accent bg-accent/10'
+                            : 'border-border text-dim hover:text-white hover:border-accent/50'
+                        }`}
+                      >
+                        {sym}
+                      </button>
+                    ))}
+                  </div>
+
+                  {/* Price history chart */}
+                  {active && (
+                    <div className="bg-surface/50 border border-border rounded p-3">
+                      <div className="flex items-center justify-between mb-2">
+                        <span className="text-[11px] font-mono text-white font-semibold">{active}</span>
+                        {activeQ && (
+                          <span className={`text-[10px] font-mono ${ up ? 'text-green-400' : up === false ? 'text-red-400' : 'text-gray-400' }`}>
+                            {activeQ.price?.toLocaleString('en-US', { maximumFractionDigits: 2 })} {activeQ.currency}
+                            {activeQ.change != null && ` (${activeQ.change > 0 ? '+' : ''}${activeQ.change.toFixed(2)}%)`}
+                          </span>
+                        )}
+                      </div>
+                      <ResponsiveContainer width="100%" height={160}>
+                        <LineChart data={chartData} margin={{ top: 4, right: 8, left: -24, bottom: 0 }}>
+                          <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" />
+                          <XAxis dataKey="t" tick={{ fontSize: 8, fill: '#6b7280' }} interval="preserveStartEnd" />
+                          <YAxis tick={{ fontSize: 8, fill: '#6b7280' }} domain={['auto', 'auto']} />
+                          <Tooltip
+                            contentStyle={{ background: '#111827', border: '1px solid #374151', fontSize: 10, fontFamily: 'monospace' }}
+                            labelStyle={{ color: '#9ca3af' }}
+                            itemStyle={{ color: lineColor }}
+                          />
+                          <Line type="monotone" dataKey="v" stroke={lineColor} strokeWidth={2}
+                            dot={false} isAnimationActive={false} />
+                        </LineChart>
+                      </ResponsiveContainer>
+                      <div className="text-[8px] font-mono text-dim mt-1">
+                        Session data — {chartData.length} readings
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Related news signal if available */}
+                  {newsSignal && (
+                    <div className={`border rounded p-2.5 text-[10px] font-mono ${
+                      newsSignal.impact === 'positive' ? 'border-green-500/30 bg-green-500/5 text-green-300' :
+                      newsSignal.impact === 'negative' ? 'border-red-500/30 bg-red-500/5 text-red-300' :
+                      'border-gray-500/30 bg-gray-500/5 text-gray-300'
+                    }`}>
+                      <div className="font-semibold mb-1">AI Signal — {newsSignal.sector}</div>
+                      <div className="text-[9px] leading-relaxed">{newsSignal.reason}</div>
+                    </div>
+                  )}
+
+                  {/* Crypto sparkline grid */}
+                  <div>
+                    <h3 className="text-[10px] font-mono text-dim mb-2 uppercase tracking-widest">Crypto 24h</h3>
+                    <div className="grid grid-cols-2 gap-2">
+                      {crypto.slice(0, 4).map(c => {
+                        const pts = [{ t: '-24h', v: c.current_price / (1 + c.price_change_percentage_24h / 100) }, { t: 'now', v: c.current_price }];
+                        return (
+                          <div key={c.id} className="bg-surface border border-border rounded p-2 space-y-1">
+                            <div className="flex justify-between">
+                              <span className="text-[9px] font-mono text-dim uppercase">{c.symbol}</span>
+                              <span className={`text-[9px] font-mono ${ c.price_change_percentage_24h > 0 ? 'text-green-400' : 'text-red-400' }`}>
+                                {c.price_change_percentage_24h > 0 ? '+' : ''}{c.price_change_percentage_24h.toFixed(1)}%
+                              </span>
+                            </div>
+                            <Sparkline data={pts} up={c.price_change_percentage_24h > 0} />
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                </>
+              )}
+            </div>
+          );
+        })()}
 
         {/* AI Signals tab */}
         {tab === 'signals' && (

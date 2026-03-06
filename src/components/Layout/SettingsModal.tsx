@@ -6,6 +6,7 @@ import { X, Database, Link, Plus, Trash2 } from 'lucide-react';
 export function SettingsModal({ onClose }: { onClose: () => void }) {
   const { state, dispatch } = useApp();
   const [settings, setSettings] = useState(state.settings);
+  const [detectLoading, setDetectLoading] = useState(false);
   const [localForm, setLocalForm] = useState({
     name: '',
     url: '',
@@ -51,6 +52,41 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
   const removeLocalMedia = (id: string) => {
     update('localMediaSources', settings.localMediaSources.filter(s => s.id !== id));
     update('enabledSources', settings.enabledSources.filter(sid => sid !== id));
+  };
+
+  const detectLocalSources = async () => {
+    if (!localForm.country && !localForm.city) return;
+    setDetectLoading(true);
+    try {
+      const res = await fetch('/api/ai', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          tier: 'flash-lite',
+          prompt: `Return a JSON array of 3 well-known local or regional news RSS feed sources for "${localForm.city ? localForm.city + ', ' : ''}${localForm.country}". Each object must have: { "name": string, "url": string (valid RSS URL), "country": string, "city": string }. Only include sources with known working RSS feeds. Return only the raw JSON array with no other text.`,
+          cacheKey: `detect-local:${localForm.city}:${localForm.country}`,
+          ttl: 86400,
+        }),
+      });
+      const data = await res.json();
+      const raw: string = data.result ?? '';
+      const cleaned = raw.replace(/^```json\n?/, '').replace(/\n?```$/, '').trim();
+      const suggestions: Array<{ name: string; url: string; country: string; city: string }> = JSON.parse(cleaned);
+      const newSources: typeof settings.localMediaSources = [];
+      const newIds: string[] = [];
+      for (const s of suggestions) {
+        if (!s.name || !s.url) continue;
+        const id = `local-${s.name.toLowerCase().replace(/[^a-z0-9]+/g, '-')}-${Date.now().toString().slice(-5)}`;
+        newSources.push({ id, name: s.name, url: s.url, country: s.country || localForm.country, city: s.city || localForm.city, sourceType: 'mainstream' as const, tier: 'tier2' as const });
+        newIds.push(id);
+      }
+      update('localMediaSources', [...settings.localMediaSources, ...newSources]);
+      update('enabledSources', [...settings.enabledSources, ...newIds]);
+    } catch (e) {
+      console.error('[Settings] AI detect failed:', e);
+    } finally {
+      setDetectLoading(false);
+    }
   };
 
   return (
@@ -117,12 +153,21 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
                   <option value="state">State</option>
                 </select>
               </div>
-              <button
-                onClick={addLocalMedia}
-                className="px-3 py-1.5 text-xs font-mono rounded bg-accent text-black hover:bg-accent/90"
-              >
-                Add Local Source
-              </button>
+              <div className="flex gap-2 flex-wrap">
+                <button
+                  onClick={addLocalMedia}
+                  className="px-3 py-1.5 text-xs font-mono rounded bg-accent text-black hover:bg-accent/90"
+                >
+                  Add Local Source
+                </button>
+                <button
+                  onClick={detectLocalSources}
+                  disabled={detectLoading || (!localForm.country && !localForm.city)}
+                  className="px-3 py-1.5 text-xs font-mono rounded border border-accent/40 text-accent/80 hover:text-accent hover:border-accent disabled:opacity-40 transition-colors"
+                >
+                  {detectLoading ? 'Detecting…' : '🌐 AI Detect'}
+                </button>
+              </div>
 
               {settings.localMediaSources.length > 0 && (
                 <div className="space-y-1.5 pt-2 border-t border-border">
@@ -148,6 +193,16 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
 
           {/* News Sources */}
           <Section title="Active Sources" icon={<Database size={13} />}>
+            <div className="flex gap-2 mb-2">
+              <button
+                onClick={() => update('enabledSources', allSources.map(s => s.id))}
+                className="px-2 py-1 text-[10px] font-mono rounded bg-white/10 text-white hover:bg-white/20 transition-colors"
+              >All</button>
+              <button
+                onClick={() => update('enabledSources', [])}
+                className="px-2 py-1 text-[10px] font-mono rounded bg-white/10 text-white hover:bg-white/20 transition-colors"
+              >None</button>
+            </div>
             <div className="space-y-1">
               {allSources.map(src => (
                 <label key={src.id} className="flex items-center gap-2.5 cursor-pointer hover:bg-white/5 px-2 py-1.5 rounded">
