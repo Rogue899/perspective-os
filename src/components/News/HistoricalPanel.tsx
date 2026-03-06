@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { X, BookOpen, Loader2, Globe, ExternalLink } from 'lucide-react';
 import type { StoryCluster } from '../../types';
+import { searchGdelt, type GdeltArticle } from '../../services/gdelt';
 
 interface WikiFact {
   title: string;
@@ -32,7 +33,9 @@ export function HistoricalPanel({
   onClose: () => void;
 }) {
   const [facts, setFacts] = useState<WikiFact[]>([]);
+  const [gdeltArticles, setGdeltArticles] = useState<GdeltArticle[]>([]);
   const [aiSummary, setAiSummary] = useState('');
+  const [synthLoading, setSynthLoading] = useState(false);
   const [loading, setLoading] = useState(true);
 
   const searchTerms = extractSearchTerms(cluster);
@@ -40,6 +43,7 @@ export function HistoricalPanel({
   useEffect(() => {
     let cancelled = false;
     setFacts([]);
+    setGdeltArticles([]);
     setAiSummary('');
     setLoading(true);
 
@@ -78,26 +82,11 @@ export function HistoricalPanel({
 
       if (!cancelled) setFacts(results);
 
-      // AI historical synthesis
+      // Fetch open-source timeline from GDELT (beyond Wikipedia)
       try {
-        const ctx = results
-          .map(f => f.summary)
-          .join('\n\n')
-          .slice(0, 700);
-        const prompt = `You are a concise geopolitical historian. In 120 words, explain the KEY historical background and root causes behind: "${cluster.headline}". Wikipedia context: ${ctx || 'not available'}. Be neutral, factual, cite 2-3 turning-point dates if known. Write one clear paragraph, no bullet lists.`;
-        const res = await fetch('/api/ai', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ prompt, tier: 'flash-lite', maxTokens: 300 }),
-        });
-        const data = await res.json();
-        if (!cancelled)
-          setAiSummary(
-            (data.text ?? '')
-              .replace(/^```[a-z]*\n?/i, '')
-              .replace(/\n?```$/i, '')
-              .trim()
-          );
+        const query = searchTerms.length > 0 ? searchTerms.join(' OR ') : cluster.headline;
+        const gdelt = await searchGdelt(query, 10);
+        if (!cancelled) setGdeltArticles(gdelt);
       } catch {
         /* noop */
       }
@@ -111,6 +100,51 @@ export function HistoricalPanel({
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [cluster.id]);
+
+  const runHistorySynthesis = async () => {
+    setSynthLoading(true);
+    try {
+      const timeline = [...cluster.articles]
+        .sort((a, b) => +new Date(b.publishedAt) - +new Date(a.publishedAt))
+        .slice(0, 8)
+        .map(a => `${new Date(a.publishedAt).toISOString().slice(0, 10)} | ${a.sourceName}: ${a.title}`)
+        .join('\n');
+
+      const wikiCtx = facts.map(f => `${f.title}: ${f.summary}`).join('\n').slice(0, 1400);
+      const gdeltCtx = gdeltArticles.map(g => `${g.seendate} | ${g.domain}: ${g.title}`).join('\n').slice(0, 1400);
+
+      const prompt = `You are a neutral geopolitical historian. Build a concise historical synthesis for this event: "${cluster.headline}".
+
+Use these sources:
+- Story timeline:\n${timeline || 'none'}
+- Wikipedia context:\n${wikiCtx || 'none'}
+- GDELT open-source context:\n${gdeltCtx || 'none'}
+
+Output format:
+1) 1 short paragraph (max 140 words) explaining root context.
+2) "Inflection points:" with 3 bullets in chronological order.
+3) "Perspective gaps:" with 2 bullets about what is still uncertain.
+
+Be factual, avoid bias, and mark uncertainty clearly.`;
+
+      const res = await fetch('/api/ai', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ prompt, tier: 'flash', maxTokens: 520, cacheKey: `history:${cluster.id}`, cacheTtl: 3600 }),
+      });
+      const data = await res.json();
+      setAiSummary(
+        String(data.text ?? '')
+          .replace(/^```[a-z]*\n?/i, '')
+          .replace(/\n?```$/i, '')
+          .trim()
+      );
+    } catch {
+      setAiSummary('Historical synthesis failed. Try again in a moment.');
+    } finally {
+      setSynthLoading(false);
+    }
+  };
 
   return (
     <div className="absolute inset-0 bg-surface z-50 flex flex-col overflow-hidden">
@@ -155,6 +189,16 @@ export function HistoricalPanel({
             ))}
           </div>
         )}
+        <div className="mt-2">
+          <button
+            onClick={runHistorySynthesis}
+            disabled={synthLoading || loading}
+            className="inline-flex items-center gap-1 px-2 py-1 text-[10px] font-mono rounded border border-accent/40 text-accent hover:text-accent hover:border-accent hover:bg-accent/10 transition-colors disabled:opacity-50"
+          >
+            {synthLoading ? <Loader2 size={10} className="animate-spin" /> : <BookOpen size={10} />}
+            Analyze History
+          </button>
+        </div>
       </div>
 
       <div className="flex-1 overflow-y-auto">
@@ -162,7 +206,7 @@ export function HistoricalPanel({
           <div className="flex flex-col items-center gap-3 py-12">
             <Loader2 size={20} className="text-accent animate-spin" />
             <span className="text-[11px] font-mono text-dim">
-              Fetching Wikipedia + AI historical context…
+              Fetching Wikipedia + GDELT historical context…
             </span>
           </div>
         )}
@@ -173,9 +217,9 @@ export function HistoricalPanel({
             {aiSummary && (
               <div className="px-4 py-4">
                 <h4 className="text-[11px] font-mono uppercase tracking-wider text-accent mb-2.5 flex items-center gap-1.5">
-                  <span>🧠</span> AI Historical Analysis
+                  <span>🧠</span> AI Historical Synthesis
                   <span className="text-[8px] text-dim font-normal normal-case ml-1">
-                    Gemini Flash-Lite
+                    Gemini Flash
                   </span>
                 </h4>
                 <p className="text-[12px] text-white/85 leading-relaxed">
@@ -184,6 +228,58 @@ export function HistoricalPanel({
                 <p className="text-[9px] font-mono text-dim/50 mt-2">
                   AI-generated — verify with primary sources
                 </p>
+              </div>
+            )}
+
+            {/* Source timeline from current cluster */}
+            <div className="px-4 py-4">
+              <h4 className="text-[11px] font-mono uppercase tracking-wider text-cyan-300 mb-2.5">
+                Source Timeline
+              </h4>
+              <div className="space-y-1.5">
+                {[...cluster.articles]
+                  .sort((a, b) => +new Date(b.publishedAt) - +new Date(a.publishedAt))
+                  .slice(0, 8)
+                  .map((article, i) => (
+                    <a
+                      key={`${article.url}-${i}`}
+                      href={article.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="block text-[10px] text-white/75 hover:text-white rounded border border-border/40 px-2 py-1.5 hover:border-accent/40 transition-colors"
+                    >
+                      <span className="text-dim font-mono mr-1">{new Date(article.publishedAt).toLocaleDateString()}</span>
+                      <span className="text-accent/80 font-mono mr-1">{article.sourceName}</span>
+                      {article.title}
+                    </a>
+                  ))}
+              </div>
+            </div>
+
+            {/* GDELT open-source feed */}
+            {gdeltArticles.length > 0 && (
+              <div className="px-4 py-4">
+                <h4 className="text-[11px] font-mono uppercase tracking-wider text-amber-300 mb-2.5">
+                  Open-Source Signals (GDELT)
+                </h4>
+                <div className="space-y-2">
+                  {gdeltArticles.slice(0, 8).map((item, i) => (
+                    <a
+                      key={`${item.url}-${i}`}
+                      href={item.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="block rounded border border-border bg-white/[0.02] hover:bg-white/[0.04] hover:border-accent/40 transition-colors p-2"
+                    >
+                      <div className="flex items-center gap-2 mb-1">
+                        <span className="text-[9px] font-mono text-amber-300">{item.domain || 'source'}</span>
+                        <span className="text-[9px] text-dim">{item.seendate?.slice(0, 8) ?? ''}</span>
+                        <ExternalLink size={8} className="ml-auto text-dim" />
+                      </div>
+                      <p className="text-[11px] text-white/80 leading-relaxed">{item.title}</p>
+                    </a>
+                  ))}
+                </div>
               </div>
             )}
 
@@ -221,7 +317,7 @@ export function HistoricalPanel({
             ))}
 
             {/* Empty state */}
-            {facts.length === 0 && !aiSummary && (
+            {facts.length === 0 && gdeltArticles.length === 0 && !aiSummary && (
               <div className="px-4 py-10 text-center space-y-2">
                 <BookOpen size={24} className="text-dim/20 mx-auto" />
                 <p className="text-[11px] text-dim font-mono">
@@ -258,6 +354,22 @@ export function HistoricalPanel({
                     className="text-[9px] font-mono px-2 py-1 rounded border border-border text-dim hover:text-white hover:border-accent/50 transition-colors"
                   >
                     Google History ↗
+                  </a>
+                  <a
+                    href={`https://web.archive.org/web/*/${encodeURIComponent(cluster.headline)}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-[9px] font-mono px-2 py-1 rounded border border-border text-dim hover:text-white hover:border-accent/50 transition-colors"
+                  >
+                    Internet Archive ↗
+                  </a>
+                  <a
+                    href={`https://www.gdeltproject.org/#query=${encodeURIComponent(cluster.headline)}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-[9px] font-mono px-2 py-1 rounded border border-border text-dim hover:text-white hover:border-accent/50 transition-colors"
+                  >
+                    GDELT Explore ↗
                   </a>
                 </div>
               </div>
