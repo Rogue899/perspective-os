@@ -233,10 +233,35 @@ export function PerspectivePanel() {
       })).filter(p => p.title && p.url);
     };
 
-    fetchReddit().then(posts => {
-      setSocialPosts({ reddit: posts, x: [] });
-      setLoadingSocial(false);
-    });
+    const fetchX = async (): Promise<SocialPost[]> => {
+      const url = `https://nitter.net/search/rss?f=tweets&q=${q}`;
+      const res = await fetch(`/api/rss-proxy?url=${encodeURIComponent(url)}`, { signal: AbortSignal.timeout(6000) });
+      if (!res.ok) return [];
+
+      const doc = new DOMParser().parseFromString(await res.text(), 'text/xml');
+      const entries = Array.from(doc.querySelectorAll('item')).slice(0, 5);
+
+      return entries.map(item => {
+        const rawUrl = item.querySelector('link')?.textContent?.trim() ?? '';
+        const xUrl = rawUrl.includes('nitter.net') ? rawUrl.replace('nitter.net', 'x.com') : rawUrl;
+        return {
+          title: item.querySelector('title')?.textContent?.trim() ?? '',
+          url: xUrl,
+          author: item.querySelector('creator, dc\\:creator')?.textContent?.trim() ?? '@unknown',
+          ago: formatAgo(item.querySelector('pubDate')?.textContent ?? ''),
+        };
+      }).filter(p => p.title && p.url);
+    };
+
+    Promise.allSettled([fetchReddit(), fetchX()])
+      .then(([redditResult, xResult]) => {
+        const reddit = redditResult.status === 'fulfilled' ? redditResult.value : [];
+        const x = xResult.status === 'fulfilled' ? xResult.value : [];
+        setSocialPosts({ reddit, x });
+      })
+      .finally(() => {
+        setLoadingSocial(false);
+      });
   }, [selectedCluster?.id]);
 
   const copyReport = useCallback(() => {
