@@ -73,7 +73,7 @@ const MTS_CATEGORY_LABEL: Record<string, string> = {
 };
 
 type MediaEmbed = {
-  platform: 'youtube' | 'x' | 'meta' | 'reddit' | 'rumble' | 'kick';
+  platform: 'youtube' | 'x' | 'meta' | 'reddit' | 'ig' | 'rumble' | 'kick';
   embedUrl: string;
   originalUrl: string;
 };
@@ -119,6 +119,14 @@ function toMediaEmbed(rawUrl: string): MediaEmbed | null {
       return {
         platform: 'meta',
         embedUrl: `https://www.facebook.com/plugins/post.php?href=${encodeURIComponent(rawUrl)}&show_text=true&width=500`,
+        originalUrl: rawUrl,
+      };
+    }
+
+    if (host.includes('instagram.com')) {
+      return {
+        platform: 'ig',
+        embedUrl: rawUrl,
         originalUrl: rawUrl,
       };
     }
@@ -404,8 +412,44 @@ export function PerspectivePanel() {
 
   // Inline social embeds: Reddit/X/Meta from article URLs (Social Posts section uses fetched RSS posts instead)
   const inlineSocialEmbeds = allEmbeds
-    .filter(m => m.platform === 'reddit' || m.platform === 'x' || m.platform === 'meta')
-    .slice(0, 3);
+    .filter(m => m.platform === 'reddit' || m.platform === 'x' || m.platform === 'meta' || m.platform === 'ig')
+    .slice(0, 8);
+
+  const mapInlineToPosts = (platform: 'reddit' | 'x' | 'meta' | 'ig'): SocialPost[] =>
+    inlineSocialEmbeds
+      .filter(e => e.platform === platform)
+      .map((embed, idx) => {
+        try {
+          const parsed = new URL(embed.originalUrl);
+          const host = parsed.hostname.replace('www.', '');
+          const segment = parsed.pathname.split('/').filter(Boolean)[0] ?? 'post';
+          const author = platform === 'reddit'
+            ? `u/${segment || 'reddit'}`
+            : platform === 'x'
+            ? `@${segment || 'x'}`
+            : platform === 'ig'
+            ? `@${segment || 'instagram'}`
+            : 'facebook';
+          return {
+            title: `${host}${parsed.pathname}`.slice(0, 120),
+            url: embed.originalUrl,
+            author,
+            ago: '',
+          };
+        } catch {
+          return {
+            title: `Source social post #${idx + 1}`,
+            url: embed.originalUrl,
+            author: platform,
+            ago: '',
+          };
+        }
+      });
+
+  const redditInlinePosts = mapInlineToPosts('reddit');
+  const xInlinePosts = mapInlineToPosts('x');
+  const igInlinePosts = mapInlineToPosts('ig');
+  const fbInlinePosts = mapInlineToPosts('meta');
 
   const sevMeta = MTS_SEVERITY[selectedCluster.severity] ?? MTS_SEVERITY.info;
   const mtsCategory = MTS_CATEGORY_LABEL[selectedCluster.category] ?? 'General';
@@ -635,19 +679,15 @@ export function PerspectivePanel() {
           {/* Platform tabs */}
           <div className="flex gap-1 pt-1 pb-2 flex-wrap">
             {(['reddit', 'x', 'ig', 'fb'] as const).map(tab => {
-              const locked = tab === 'ig' || tab === 'fb';
               const labels: Record<string, string> = { reddit: '🟠 Reddit', x: '𝕏 X', ig: '📷 Instagram', fb: '👥 Facebook' };
               return (
-                <button key={tab} onClick={() => !locked && setActiveSocialTab(tab)} disabled={locked}
+                <button key={tab} onClick={() => setActiveSocialTab(tab)}
                   className={`px-2 py-1 text-[10px] font-mono rounded border transition-colors flex items-center gap-1 ${
-                    activeSocialTab === tab && !locked
+                    activeSocialTab === tab
                       ? 'bg-accent/15 text-accent border-accent/30'
-                      : locked
-                      ? 'text-dim/30 border-border/30 cursor-not-allowed'
                       : 'text-dim hover:text-white border-border hover:border-accent/40'
                   }`}>
                   {labels[tab]}
-                  {locked && <span className="text-[8px] text-dim/40">🔒</span>}
                 </button>
               );
             })}
@@ -657,7 +697,7 @@ export function PerspectivePanel() {
           {activeSocialTab === 'reddit' && (
             loadingSocial ? (
               <div className="text-[10px] text-dim font-mono animate-pulse">Fetching Reddit posts…</div>
-            ) : socialPosts.reddit.length > 0 ? (
+            ) : socialPosts.reddit.length > 0 || redditInlinePosts.length > 0 ? (
               <div className="space-y-2">
                 {socialPosts.reddit.map((post, i) => (
                   <a key={i} href={post.url} target="_blank" rel="noopener noreferrer"
@@ -670,43 +710,95 @@ export function PerspectivePanel() {
                     <p className="text-[11px] text-white/80 leading-relaxed line-clamp-3">{post.title}</p>
                   </a>
                 ))}
-                {/* Inline Reddit embeds from article sources */}
-                {inlineSocialEmbeds.filter(e => e.platform === 'reddit').map((embed, i) => (
-                  <div key={`embed-${i}`} className="rounded border border-border overflow-hidden">
-                    <div className="px-2 py-1 border-b border-border text-[10px] font-mono text-orange-400/70">Reddit thread (from source)</div>
-                    <iframe src={embed.embedUrl} className="w-full h-40" loading="lazy"
-                      allow="encrypted-media" sandbox="allow-scripts allow-same-origin allow-popups" />
-                  </div>
+                {redditInlinePosts.map((post, i) => (
+                  <a key={`inline-reddit-${i}`} href={post.url} target="_blank" rel="noopener noreferrer"
+                    className="block p-2.5 rounded border border-border bg-orange-500/5 hover:bg-orange-500/10 hover:border-orange-500/30 transition-colors group">
+                    <div className="flex items-center gap-1.5 mb-1">
+                      <span className="text-[10px] font-mono text-orange-400">{post.author}</span>
+                      <span className="text-[10px] text-dim">· from source link</span>
+                      <ExternalLink size={9} className="ml-auto text-dim opacity-0 group-hover:opacity-100 transition-opacity" />
+                    </div>
+                    <p className="text-[11px] text-white/80 leading-relaxed line-clamp-3">{post.title}</p>
+                  </a>
                 ))}
               </div>
             ) : (
               <div className="space-y-2">
                 <p className="text-[11px] text-dim font-mono py-1">No Reddit posts found for this story.</p>
-                {/* Still show inline Reddit embeds from article URLs if available */}
-                {inlineSocialEmbeds.filter(e => e.platform === 'reddit').map((embed, i) => (
-                  <div key={`embed-${i}`} className="rounded border border-border overflow-hidden">
-                    <div className="px-2 py-1 border-b border-border text-[10px] font-mono text-orange-400/70">Reddit thread (from source)</div>
-                    <iframe src={embed.embedUrl} className="w-full h-40" loading="lazy"
-                      allow="encrypted-media" sandbox="allow-scripts allow-same-origin allow-popups" />
-                  </div>
-                ))}
               </div>
             )
           )}
 
           {activeSocialTab === 'x' && (
-            <div className="flex flex-col items-center gap-3 py-4 text-center">
-              <p className="text-[11px] text-dim font-mono leading-relaxed max-w-[240px]">
-                X requires a paid API for programmatic access. Search for this story directly on X.
-              </p>
-              <a
-                href={`https://x.com/search?q=${encodeURIComponent(selectedCluster.headline)}&src=typed_query&f=live`}
-                target="_blank" rel="noopener noreferrer"
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded border border-blue-500/40 bg-blue-500/10 text-blue-400 text-[11px] font-mono hover:bg-blue-500/20 transition-colors"
-              >
-                Open X search <ExternalLink size={10} />
-              </a>
-            </div>
+            loadingSocial ? (
+              <div className="text-[10px] text-dim font-mono animate-pulse">Fetching X posts…</div>
+            ) : socialPosts.x.length > 0 || xInlinePosts.length > 0 ? (
+              <div className="space-y-2">
+                {[...socialPosts.x, ...xInlinePosts].map((post, i) => (
+                  <a key={`x-${i}`} href={post.url} target="_blank" rel="noopener noreferrer"
+                    className="block p-2.5 rounded border border-border bg-blue-500/5 hover:bg-blue-500/10 hover:border-blue-500/30 transition-colors group">
+                    <div className="flex items-center gap-1.5 mb-1">
+                      <span className="text-[10px] font-mono text-blue-400">{post.author}</span>
+                      {post.ago && <span className="text-[10px] text-dim">· {post.ago}</span>}
+                      {!post.ago && <span className="text-[10px] text-dim">· from source link</span>}
+                      <ExternalLink size={9} className="ml-auto text-dim opacity-0 group-hover:opacity-100 transition-opacity" />
+                    </div>
+                    <p className="text-[11px] text-white/80 leading-relaxed line-clamp-3">{post.title}</p>
+                  </a>
+                ))}
+              </div>
+            ) : (
+              <div className="flex flex-col items-center gap-3 py-4 text-center">
+                <p className="text-[11px] text-dim font-mono leading-relaxed max-w-[240px]">No X posts found for this story.</p>
+                <a
+                  href={`https://x.com/search?q=${encodeURIComponent(selectedCluster.headline)}&src=typed_query&f=live`}
+                  target="_blank" rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded border border-blue-500/40 bg-blue-500/10 text-blue-400 text-[11px] font-mono hover:bg-blue-500/20 transition-colors"
+                >
+                  Open X search <ExternalLink size={10} />
+                </a>
+              </div>
+            )
+          )}
+
+          {activeSocialTab === 'ig' && (
+            igInlinePosts.length > 0 ? (
+              <div className="space-y-2">
+                {igInlinePosts.map((post, i) => (
+                  <a key={`ig-${i}`} href={post.url} target="_blank" rel="noopener noreferrer"
+                    className="block p-2.5 rounded border border-border bg-pink-500/5 hover:bg-pink-500/10 hover:border-pink-500/30 transition-colors group">
+                    <div className="flex items-center gap-1.5 mb-1">
+                      <span className="text-[10px] font-mono text-pink-400">{post.author}</span>
+                      <span className="text-[10px] text-dim">· from source link</span>
+                      <ExternalLink size={9} className="ml-auto text-dim opacity-0 group-hover:opacity-100 transition-opacity" />
+                    </div>
+                    <p className="text-[11px] text-white/80 leading-relaxed line-clamp-3">{post.title}</p>
+                  </a>
+                ))}
+              </div>
+            ) : (
+              <p className="text-[11px] text-dim font-mono py-1">No Instagram posts found in source links for this story.</p>
+            )
+          )}
+
+          {activeSocialTab === 'fb' && (
+            fbInlinePosts.length > 0 ? (
+              <div className="space-y-2">
+                {fbInlinePosts.map((post, i) => (
+                  <a key={`fb-${i}`} href={post.url} target="_blank" rel="noopener noreferrer"
+                    className="block p-2.5 rounded border border-border bg-indigo-500/5 hover:bg-indigo-500/10 hover:border-indigo-500/30 transition-colors group">
+                    <div className="flex items-center gap-1.5 mb-1">
+                      <span className="text-[10px] font-mono text-indigo-300">{post.author}</span>
+                      <span className="text-[10px] text-dim">· from source link</span>
+                      <ExternalLink size={9} className="ml-auto text-dim opacity-0 group-hover:opacity-100 transition-opacity" />
+                    </div>
+                    <p className="text-[11px] text-white/80 leading-relaxed line-clamp-3">{post.title}</p>
+                  </a>
+                ))}
+              </div>
+            ) : (
+              <p className="text-[11px] text-dim font-mono py-1">No Facebook posts found in source links for this story.</p>
+            )
           )}
         </CollapsibleSection>
 
