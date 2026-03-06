@@ -1,0 +1,49 @@
+A-top bar that says FEED mao analyze finance...
+1- default tab should be map
+2- feed should be grid layout of the feed and posts only without the map
+3- analyze should show theperpective engine
+4-when i right click over an area get me the news on that area or country or city
+
+B-Finance tab should show charts and analysis like bluember and other finance website
+1- show charts and data
+2- show data abt news effecting the charts
+3- ai analysis
+
+C-make sure ur using mebded frames for all videos
+
+D- use the current categories and subcategories cretae 3 major categories.
+1- Global and filter feed global, reflecton map global news, andglobal feed
+2- regional for speific regions (load speicifc regions)
+3- local, auto detect location through wifi gps, ip address
+4-fix filter of conflictand other filters
+
+E- keywords should be used to retreiv dataand hsow them as posts and bubbles user cannot go and get redirect as a search engine
+1-use ig, fb, x, keywordsand seo words to get posts about news and stories
+2- only show them as postsin panel or bubble chat
+
+F-check filterconsistancy, add button in profile auto detect and scrape local web using ai for local news sources and add them to local feed or feed
+
+G- science and med section with all current fitlering abilities and news
+
+H-sports and olympics
+
+I- notifications system
+
+J- emailing list (create newsletter and templates)
+
+K- login gmail and auto link the sovial media to gmail if exists toshow data
+
+L-region historical facts and hostoricak reasosns why things got to the way it was from different varified sources such as hikam history, google search similarepeople with ur abuility to getthe data aboiut thehoistory of aplace and region,from historicaly accurateoplaces and simialre sources with ai generated analysis and sumamries
+
+
+M-right panel top bar has ground news mts and opinions remove that , and use the sources ony, use inspiration from mts for data and design
+
+N-https://github.com/public-apis/public-apis analyze and use
+
+O- in th elive section i have a grid system and a choices but i dont know whichones am i vewiing, anbd more grids, with chat bubble icon to see news related osts and ai analysis on each grid frame
+
+P- Add All choice on the profile for news, and detectlocal news sources icon button thatuses ai and key words to get news sources
+
+Q- still getting 404 on somerss feeds, and when i click on conflict i only see ai prompt no other filtersed rss feeds and apis, call relavnet apis and rss feeds as well on those filters
+
+R-when i click feed i want to see a full grid view like live with feeds and posts only

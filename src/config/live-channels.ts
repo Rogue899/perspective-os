@@ -93,7 +93,7 @@ export const LIVE_CHANNELS: LiveChannel[] = [
 ];
 
 // Grid layout presets
-export type GridLayout = '2x2' | '2x3' | '3x2' | '1x4' | 'single';
+export type GridLayout = 'single' | '1x4' | '2x2' | '2x3' | '3x2' | '3x3' | '4x2';
 
 export const LAYOUT_COUNTS: Record<GridLayout, number> = {
   'single': 1,
@@ -101,6 +101,8 @@ export const LAYOUT_COUNTS: Record<GridLayout, number> = {
   '2x2': 4,
   '2x3': 6,
   '3x2': 6,
+  '3x3': 9,
+  '4x2': 8,
 };
 
 export function buildEmbedUrl(channelId: string): string {

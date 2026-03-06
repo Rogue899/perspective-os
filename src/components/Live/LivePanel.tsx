@@ -6,7 +6,7 @@
 import { useState, useMemo } from 'react';
 import { useApp } from '../../context/AppContext';
 import { LIVE_CHANNELS, buildEmbedUrl, type GridLayout, LAYOUT_COUNTS } from '../../config/live-channels';
-import { Maximize2, Minimize2, LayoutGrid, Volume2, VolumeX, RefreshCw } from 'lucide-react';
+import { Maximize2, Minimize2, LayoutGrid, Volume2, VolumeX, RefreshCw, MessageCircle, X } from 'lucide-react';
 
 const BIAS_COLORS: Record<string, string> = {
   left:   'border-blue-500/40',
@@ -16,20 +16,23 @@ const BIAS_COLORS: Record<string, string> = {
   gulf:   'border-amber-500/40',
 };
 
-const LAYOUT_OPTIONS: Array<{ id: GridLayout; label: string; cols: string; rows: string }> = [
-  { id: 'single', label: '1',   cols: 'grid-cols-1', rows: '' },
-  { id: '1x4',   label: '1×4', cols: 'grid-cols-1', rows: '' },
-  { id: '2x2',   label: '2×2', cols: 'grid-cols-2', rows: '' },
-  { id: '2x3',   label: '2×3', cols: 'grid-cols-2', rows: '' },
-  { id: '3x2',   label: '3×2', cols: 'grid-cols-3', rows: '' },
+const LAYOUT_OPTIONS: Array<{ id: GridLayout; label: string; cols: string }> = [
+  { id: 'single', label: '1',   cols: 'grid-cols-1' },
+  { id: '1x4',   label: '1×4', cols: 'grid-cols-1' },
+  { id: '2x2',   label: '2×2', cols: 'grid-cols-2' },
+  { id: '2x3',   label: '2×3', cols: 'grid-cols-2' },
+  { id: '3x2',   label: '3×2', cols: 'grid-cols-3' },
+  { id: '3x3',   label: '3×3', cols: 'grid-cols-3' },
+  { id: '4x2',   label: '4×2', cols: 'grid-cols-4' },
 ];
 
 export function LivePanel() {
-  const { state } = useApp();
+  const { state, dispatch } = useApp();
   const { clusters } = state;
   const [layout, setLayout] = useState<GridLayout>('2x2');
   const [muted, setMuted] = useState(true);
   const [fullscreen, setFullscreen] = useState<string | null>(null);
+  const [activeChat, setActiveChat] = useState<string | null>(null);
   const [enabledIds, setEnabledIds] = useState<Set<string>>(
     new Set(LIVE_CHANNELS.filter(c => c.enabled).map(c => c.id))
   );
@@ -156,31 +159,82 @@ export function LivePanel() {
             No channels selected
           </div>
         ) : (
-          activeChannels.map(ch => (
+          activeChannels.map((ch, idx) => (
             <div
               key={`${ch.id}-${embedKey}`}
-              className={`relative group border ${BIAS_COLORS[ch.bias]} border overflow-hidden bg-black`}
+              className={`relative group border ${BIAS_COLORS[ch.bias]} border overflow-hidden bg-black flex flex-col`}
             >
+              {/* Channel header bar — always visible, shows which stream you're watching */}
+              <div className={`flex items-center justify-between px-2 py-1 bg-black/90 border-b border-white/10 shrink-0`}>
+                <div className="flex items-center gap-1.5 min-w-0">
+                  <span className="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse shrink-0" />
+                  <span className="text-[9px] font-mono text-white/90 truncate">{ch.name}</span>
+                  <span className="text-[8px] font-mono text-white/40 shrink-0">{ch.region}</span>
+                </div>
+                <div className="flex items-center gap-1 shrink-0">
+                  <button
+                    onClick={() => setActiveChat(activeChat === ch.id ? null : ch.id)}
+                    className={`p-1 rounded transition-colors ${
+                      activeChat === ch.id
+                        ? 'bg-accent/20 text-accent'
+                        : 'bg-black/40 hover:bg-black/80 text-white/60 hover:text-white'
+                    }`}
+                    title="Related stories & AI analysis"
+                  >
+                    <MessageCircle size={10} />
+                  </button>
+                  <button
+                    onClick={() => setFullscreen(ch.id)}
+                    className="bg-black/40 hover:bg-black/80 text-white/60 hover:text-white p-1 rounded transition-colors"
+                    title="Fullscreen"
+                  >
+                    <Maximize2 size={10} />
+                  </button>
+                </div>
+              </div>
+              {/* Stream number badge */}
+              <div className="absolute top-7 left-2 text-[8px] font-mono text-white/30 pointer-events-none">
+                #{idx + 1}
+              </div>
               <iframe
                 src={buildEmbedUrl(ch.channelId) + (muted ? '' : '&mute=0')}
-                className="w-full h-full"
+                className="w-full flex-1 min-h-0"
                 allow="autoplay; encrypted-media; picture-in-picture"
                 allowFullScreen
                 title={ch.name}
               />
-              {/* Overlay on hover */}
-              <div className="absolute inset-0 flex items-end justify-between p-2 bg-gradient-to-t from-black/70 to-transparent opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none">
-                <div className="text-[10px] font-mono text-white/80">
-                  {ch.name}
-                  <span className="ml-1 text-white/40">· {ch.region}</span>
-                </div>
-                <button
-                  onClick={() => setFullscreen(ch.id)}
-                  className="pointer-events-auto bg-black/60 hover:bg-black/80 text-white p-1 rounded transition-colors"
-                >
-                  <Maximize2 size={11} />
-                </button>
-              </div>
+              {/* Chat / related stories drawer */}
+              {activeChat === ch.id && (() => {
+                const related = clusters.filter(c =>
+                  c.headline.toLowerCase().includes(ch.name.toLowerCase().split(' ')[0]) ||
+                  c.headline.toLowerCase().includes(ch.region.toLowerCase()) ||
+                  c.articles.some(a => a.title.toLowerCase().includes(ch.region.toLowerCase()))
+                ).slice(0, 8);
+                return (
+                  <div className="absolute inset-0 bg-black/95 flex flex-col z-20">
+                    <div className="flex items-center justify-between px-2 py-1.5 border-b border-white/10">
+                      <span className="text-[9px] font-mono text-accent">{ch.name} · Related</span>
+                      <button onClick={() => setActiveChat(null)} className="text-dim hover:text-white"><X size={11} /></button>
+                    </div>
+                    <div className="flex-1 overflow-y-auto p-1.5 space-y-1">
+                      {related.length === 0 ? (
+                        <span className="text-[9px] text-dim font-mono p-2 block">No related stories loaded yet</span>
+                      ) : related.map(cluster => (
+                        <button
+                          key={cluster.id}
+                          onClick={() => {
+                            dispatch({ type: 'SELECT_CLUSTER', payload: cluster });
+                            dispatch({ type: 'SET_ACTIVE_PANEL', payload: 'analysis' });
+                          }}
+                          className="w-full text-left px-2 py-1.5 text-[9px] font-mono text-white/80 hover:text-white hover:bg-white/10 rounded transition-colors leading-snug"
+                        >
+                          {cluster.headline}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                );
+              })()}
             </div>
           ))
         )}

@@ -125,14 +125,25 @@ export async function getToneDivergence(topic: string): Promise<{
   }
 }
 
-// ─── Get GDELT topic feeds (military, cyber, nuclear, sanctions) ──────────────
-export async function getTopicFeed(topic: 'military' | 'cyber' | 'nuclear' | 'sanctions' | 'protests'): Promise<GdeltArticle[]> {
+// ─── Get GDELT topic feeds ────────────────────────────────────────────────────
+export type GdeltTopic = 'military' | 'cyber' | 'nuclear' | 'sanctions' | 'protests' |
+  'disaster' | 'health' | 'science' | 'tech' | 'sport' | 'economic' | 'diplomatic' | 'terrorism';
+
+export async function getTopicFeed(topic: GdeltTopic): Promise<GdeltArticle[]> {
   const TOPIC_QUERIES: Record<string, string> = {
     military:   'conflict war troops military strike airstrike',
     cyber:      'cyberattack hack ransomware breach malware',
     nuclear:    'nuclear weapon warhead IAEA enrichment',
     sanctions:  'sanctions embargo OFAC blocked assets',
     protests:   'protest demonstration rally riot uprising',
+    terrorism:  'terror attack bombing extremist hostage',
+    disaster:   'earthquake flood hurricane wildfire disaster tsunami',
+    health:     'pandemic outbreak vaccine virus epidemic hospital',
+    science:    'discovery research breakthrough climate space science',
+    tech:       'technology AI chip semiconductor startup',
+    sport:      'olympics football soccer championship tournament',
+    economic:   'economy recession inflation GDP trade tariff',
+    diplomatic: 'summit treaty ceasefire diplomacy negotiations sanctions',
   };
   return searchGdelt(TOPIC_QUERIES[topic] ?? topic, 15);
 }
