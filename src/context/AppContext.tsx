@@ -20,6 +20,7 @@ interface AppState {
   globalKeywords:     string[];           // AI-generated, shared across all panels
   keywordHits:        KeywordHit[];       // Live monitor results (capped at 100)
   keywordMonitorOn:   boolean;            // is the background monitor running?
+  locationFilter:     { name: string; lat: number; lng: number } | null; // map→feed sync
 }
 
 type Action =
@@ -37,7 +38,8 @@ type Action =
   | { type: 'ADD_KEYWORD_HITS';       payload: KeywordHit[] }
   | { type: 'CLEAR_KEYWORD_HITS' }
   | { type: 'MARK_KEYWORDS_READ' }    // flip isNew → false for all hits
-  | { type: 'SET_KEYWORD_MONITOR';    payload: boolean };
+  | { type: 'SET_KEYWORD_MONITOR';    payload: boolean }
+  | { type: 'SET_LOCATION_FILTER';    payload: { name: string; lat: number; lng: number } | null };
 
 const DEFAULT_SETTINGS: AppSettings = {
   geminiKey:            '',
@@ -84,6 +86,7 @@ const initialState: AppState = {
   globalKeywords:     [],
   keywordHits:        [],
   keywordMonitorOn:   false,
+  locationFilter:     null,
 };
 
 function reducer(state: AppState, action: Action): AppState {
@@ -154,6 +157,8 @@ function reducer(state: AppState, action: Action): AppState {
       return { ...state, keywordHits: state.keywordHits.map(h => ({ ...h, isNew: false })) };
     case 'SET_KEYWORD_MONITOR':
       return { ...state, keywordMonitorOn: action.payload };
+    case 'SET_LOCATION_FILTER':
+      return { ...state, locationFilter: action.payload };
     default:
       return state;
   }

@@ -131,9 +131,23 @@ Respond ONLY with valid JSON (no markdown, no backticks, no preamble):
         cacheKey,
         cacheTtl: 3600,
       }),
-    }, 20000);
+    }, 25000);
 
-    if (!res.ok) throw new Error(`AI HTTP ${res.status}`);
+    if (!res.ok) {
+      // Try to extract meaningful error from the response body
+      let errMsg = `AI HTTP ${res.status}`;
+      try {
+        const errBody = await res.json();
+        if (errBody?.error) errMsg = errBody.error;
+      } catch { /* ignore parse failure */ }
+      if (res.status === 503) {
+        throw new Error('AI providers unavailable. Add GEMINI_API_KEY or GROQ_API_KEY in Settings, or try again in a few minutes.');
+      }
+      if (res.status === 404) {
+        throw new Error('AI endpoint not found (/api/ai). Check Vercel deployment or restart local dev server.');
+      }
+      throw new Error(errMsg);
+    }
     const data = await res.json();
     return {
       text: data.text,
@@ -141,7 +155,36 @@ Respond ONLY with valid JSON (no markdown, no backticks, no preamble):
       cached: data.cached ?? false,
       latencyMs: Date.now() - start,
     };
-  } catch (err) {
+  } catch (err: any) {
+    // Retry once on network abort/timeout before giving up
+    if (err?.name === 'AbortError' || err?.message?.includes('aborted')) {
+      console.warn('[AI] Perspective analysis timed out, retrying once...');
+      try {
+        const retry = await fetchWithTimeout('/api/ai', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            prompt: userPrompt,
+            systemPrompt,
+            tier: 'flash',
+            maxTokens: 1500,
+            cacheKey,
+            cacheTtl: 3600,
+          }),
+        }, 30000);
+        if (!retry.ok) throw new Error(`AI retry HTTP ${retry.status}`);
+        const data = await retry.json();
+        return {
+          text: data.text,
+          provider: data.provider as AIProvider,
+          cached: data.cached ?? false,
+          latencyMs: Date.now() - start,
+        };
+      } catch (retryErr) {
+        console.error('[AI] Retry also failed:', retryErr);
+        throw new Error('AI analysis timed out twice. Check your internet connection or try again.');
+      }
+    }
     console.error('[AI] Perspective analysis failed:', err);
     throw err;
   }

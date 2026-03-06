@@ -187,8 +187,56 @@ async function handleTelegram(_req, res, params) {
   }
 }
 
-function cors() {
-  return {
+async function handleEmbed(req, res) {
+  const body = await readBody(req);
+  let parsed;
+  try { parsed = JSON.parse(body); } catch { parsed = {}; }
+
+  const GEMINI_KEY = process.env.GEMINI_API_KEY || process.env.VITE_GEMINI_API_KEY;
+  if (!GEMINI_KEY) {
+    res.writeHead(200, { ...cors(), 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ embedding: [], cached: false }));
+    return;
+  }
+  try {
+    const gemRes = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/text-embedding-004:embedContent?key=${GEMINI_KEY}`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ model: 'models/text-embedding-004', content: { parts: [{ text: (parsed.text || '').slice(0, 1000) }] } }),
+        signal: AbortSignal.timeout(10000),
+      }
+    );
+    if (!gemRes.ok) throw new Error(`Gemini embed ${gemRes.status}`);
+    const data = await gemRes.json();
+    res.writeHead(200, { ...cors(), 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ embedding: data.embedding?.values ?? [], cached: false }));
+  } catch (err) {
+    console.warn('[embed] Failed:', err.message);
+    res.writeHead(200, { ...cors(), 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ embedding: [], cached: false }));
+  }
+}
+
+async function handleEonet(_req, res) {
+  try {
+    const r = await fetch('https://eonet.gsfc.nasa.gov/api/v3/events?status=open&limit=60&days=14', {
+      headers: { 'User-Agent': 'PerspectiveOS/1.0 (eonet-proxy)' },
+      signal: AbortSignal.timeout(10000),
+    });
+    if (!r.ok) throw new Error(`EONET upstream ${r.status}`);
+    const data = await r.json();
+    res.writeHead(200, { ...cors(), 'Content-Type': 'application/json', 'Cache-Control': 'public, max-age=300' });
+    res.end(JSON.stringify(data));
+  } catch (err) {
+    console.warn('[eonet] Failed:', err.message);
+    res.writeHead(200, { ...cors(), 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ events: [] }));
+  }
+}
+
+
     'Access-Control-Allow-Origin':  '*',
     'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
     'Access-Control-Allow-Headers': 'Content-Type',
@@ -218,6 +266,8 @@ const server = http.createServer(async (req, res) => {
   if (url.pathname === '/api/ai')             return handleAI(req, res);
   if (url.pathname === '/api/finance')        return handleFinance(req, res, params);
   if (url.pathname === '/api/telegram-proxy') return handleTelegram(req, res, params);
+  if (url.pathname === '/api/embed')          return handleEmbed(req, res);
+  if (url.pathname === '/api/eonet')          return handleEonet(req, res);
 
   res.writeHead(404, cors());
   res.end(JSON.stringify({ error: 'Not found: ' + url.pathname }));

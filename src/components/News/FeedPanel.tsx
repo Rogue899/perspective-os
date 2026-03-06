@@ -92,7 +92,7 @@ const CATEGORY_ALIASES: Partial<Record<EventCategory | 'all', EventCategory[]>> 
 
 export function FeedPanel({ onRefresh, defaultGrid }: { onRefresh?: () => void; defaultGrid?: boolean }) {
   const { state, dispatch } = useApp();
-  const { clusters, loading, settings } = state;
+  const { clusters, loading, settings, locationFilter } = state;
   const [filter, setFilter] = useState<EventCategory | 'all'>('all');
   const [sourceFilter, setSourceFilter] = useState<SourceFilter>('all');
   const [viewMode, setViewMode] = useState<ViewMode>(defaultGrid ? 'grid' : 'list');
@@ -110,6 +110,16 @@ export function FeedPanel({ onRefresh, defaultGrid }: { onRefresh?: () => void; 
   const [hitsExpanded, setHitsExpanded] = useState(false);
   const allSources = getAllSources();
   const isFetching = useRef(false);
+
+  // Haversine distance helper for map→feed proximity filter
+  const distKm = (aLat: number, aLng: number, bLat: number, bLng: number) => {
+    const R = 6371;
+    const dLat = ((bLat - aLat) * Math.PI) / 180;
+    const dLng = ((bLng - aLng) * Math.PI) / 180;
+    const a = Math.sin(dLat / 2) ** 2
+      + Math.cos((aLat * Math.PI) / 180) * Math.cos((bLat * Math.PI) / 180) * Math.sin(dLng / 2) ** 2;
+    return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  };
 
   // global keywords + hits from AppContext (shared across all panels)
   const { globalKeywords, keywordHits } = state;
@@ -349,6 +359,22 @@ export function FeedPanel({ onRefresh, defaultGrid }: { onRefresh?: () => void; 
       if (!geoMatch) return false;
     }
 
+    // Map→feed sync: filter by proximity to right-clicked location (dispatched from MapView)
+    if (locationFilter) {
+      if (c.geoHint) {
+        const dist = distKm(locationFilter.lat, locationFilter.lng, c.geoHint.lat, c.geoHint.lng);
+        if (dist > 800) return false; // 800km radius
+      } else {
+        // No geo hint: keep if headline/geo text loosely matches the location name
+        const locName = locationFilter.name.toLowerCase();
+        const headlineLower = c.headline.toLowerCase();
+        if (!headlineLower.includes(locName.split(',')[0].toLowerCase()) &&
+            !c.articles.some(a => a.title.toLowerCase().includes(locName.split(',')[0].toLowerCase()))) {
+          return false;
+        }
+      }
+    }
+
     return true;
   });
 
@@ -357,7 +383,25 @@ export function FeedPanel({ onRefresh, defaultGrid }: { onRefresh?: () => void; 
 
   return (
     <div className="flex flex-col h-full">
-      {/* Toolbar */}
+      {/* Map→Feed location filter banner */}
+      {locationFilter && (
+        <div className="px-3 py-1.5 bg-accent/10 border-b border-accent/30 flex items-center justify-between shrink-0">
+          <div className="flex items-center gap-1.5 text-[10px] font-mono">
+            <MapPin size={10} className="text-accent" />
+            <span className="text-accent font-semibold">Map filter:</span>
+            <span className="text-white">{locationFilter.name}</span>
+            <span className="text-dim">— showing nearby stories</span>
+          </div>
+          <button
+            onClick={() => dispatch({ type: 'SET_LOCATION_FILTER', payload: null })}
+            className="text-dim hover:text-white text-[10px] font-mono flex items-center gap-0.5"
+            title="Clear map filter, show all stories"
+          >
+            <X size={10} />
+            <span>Reset</span>
+          </button>
+        </div>
+      )}
       <div className="px-3 py-2 border-b border-border flex items-center gap-2 shrink-0 flex-wrap">
         <div className="flex items-center gap-1.5 text-[10px] font-mono text-dim">
           {online

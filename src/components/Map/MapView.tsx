@@ -197,6 +197,8 @@ export function MapView() {
         setUserCoords({ lat, lng });
         setFloatingLocation({ name: 'Near you', lat, lng });
         setFloatingTab('news');
+        // Sync feed panel to user's location
+        dispatch({ type: 'SET_LOCATION_FILTER', payload: { name: 'Near you', lat, lng } });
         setGeoState('located');
         setGeoError('');
       },
@@ -233,7 +235,7 @@ export function MapView() {
       m.setStyle(FALLBACK_STYLE as any);
     });
 
-    // Right-click → reverse geocode → show area news popup
+    // Right-click → reverse geocode → show area news popup + sync feed
     m.on('contextmenu', async (ev) => {
       ev.preventDefault?.();
       const { lat, lng } = ev.lngLat;
@@ -251,9 +253,12 @@ export function MapView() {
           'this area';
         setFloatingLocation({ name, lat, lng });
         setFloatingTab('news');
+        // Sync left feed panel to this location
+        dispatch({ type: 'SET_LOCATION_FILTER', payload: { name, lat, lng } });
       } catch {
         setFloatingLocation({ name: 'this area', lat, lng });
         setFloatingTab('news');
+        dispatch({ type: 'SET_LOCATION_FILTER', payload: { name: 'this area', lat, lng } });
       }
     });
 
@@ -439,12 +444,15 @@ export function MapView() {
         el.addEventListener('click', () => {
           dispatch({ type: 'SELECT_CLUSTER', payload: cluster });
           if (cluster.geoHint) {
-            setFloatingLocation({
+            const loc = {
               name: cluster.geoHint.name,
               lat: cluster.geoHint.lat,
               lng: cluster.geoHint.lng,
-            });
+            };
+            setFloatingLocation(loc);
             setFloatingTab('news');
+            // Sync feed panel to cluster's location
+            dispatch({ type: 'SET_LOCATION_FILTER', payload: loc });
           }
         });
 
@@ -474,9 +482,9 @@ export function MapView() {
               </span>
             </div>
             <button
-              onClick={() => setFloatingLocation(null)}
+              onClick={() => { setFloatingLocation(null); dispatch({ type: 'SET_LOCATION_FILTER', payload: null }); }}
               className="text-dim hover:text-white"
-              title="Close city brief"
+              title="Close — reset feed to global"
             >
               <X size={12} />
             </button>

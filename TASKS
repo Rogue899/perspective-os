@@ -1,3 +1,97 @@
+## PerspectiveOS Product Backlog (2026-03)
+
+> Mission: "We are a news agency interested in shedding light from all sides and exposing hidden truths."
+
+---
+
+### P0 — Core UX + Reliability
+
+- [ ] **Feed view = full grid layout** — when clicking Feed it should show a full grid of posts only (like the Live grid), no map attached. User wants to scale grid density up to 8×8.
+- [ ] **Hide left panel in Map mode** — when the user is in Map mode the left feed/grid column should disappear so the map has full focus.
+- [ ] **Rolling "Just now" strip** — add a live ticker/strip at the top of Feed mode showing breaking items as they land.
+- [ ] **Replace matrix-green theme** — the current palette feels like a hacker terminal. Replace with a modern, accessible dark palette with defined color tokens. Add light/dark toggle.
+- [ ] **Fix AI HTTP 503 / 404 on Analyze** — user reports getting 503 or 404 when clicking Analyze. Fix the route, add fallback + retries, show graceful degraded UI instead of blank panel.
+- [ ] **Video section = live coverage only** — the video section should play any live video currently covering the topic at hand. Never pre-recorded content, never a search redirect. If no live stream is available, show next-best fallback (recent live replay), never a dead embed.
+- [ ] **Map right-click → feed sync** — when user zooms in on a location and right-clicks, the left news section should also filter and reflect that area (country, region, or city). Add a visible "reset to global" control so the user knows the feed is location-filtered.
+
+### P1 — Live + Location Intelligence
+
+- [ ] **Brief panel — AI local live finder** — AI should search for local news channels or citizen journalists that are currently going live on YouTube or Rumble for the detected location. Embed the video (iframe, autoplay muted). Show clear channel name, confidence score, and topic match. User should be able to click to expand the player.
+- [ ] **Live tab — same AI discovery applied at scale** — take the same location-aware AI discovery used in Brief and apply it to the full Live tab grid. Use location info already gathered (IP/GPS/WiFi) to rank and fill the live grid with the most relevant active streams. Each grid tile should show channel identity, what it's covering, and have a chat bubble icon to surface AI analysis + related posts for that stream.
+- [ ] **Live tile UX** — user said "I don't know which ones I'm viewing" — each live tile must have visible labels: channel name, topic, region. Add more grid slots. Chat bubble per tile to show related news posts and AI summary without leaving the grid.
+- [ ] **Popup embedded player** — clicking a live tile opens a popup embedded player; on stream failure auto-falls back to the next best stream without user action.
+
+### P1 — Social + Content Placement (user flagged placement is wrong)
+
+- [ ] **Reddit embed → Social Posts section** — Reddit content is currently in the wrong place. It belongs in the Social Posts panel, embedded as Reddit post cards, not in the Video section.
+- [ ] **Social embeds per platform** — each social platform (X, Reddit, IG public, Facebook public) should embed natively as post cards in the Social Posts panel. Keywords and SEO terms drive retrieval — results show as posts/bubbles, never redirect the user to a search engine.
+- [ ] **Video section = live only (social too)** — reinforce: the Video section is reserved exclusively for live coverage of the topic. Social clips are Social, not Video.
+
+### P1 — Analyze Tab Rework (full rework requested)
+
+- [ ] **Add LLM-powered discovery search box** — top of Analyze gets a search bar where the user types a topic or event. The LLM interprets the query, finds relevant angles, and drives what populates below. Not a keyword search — an intelligent discovery search.
+- [ ] **Search results → left filter pipeline** — results from the LLM search should populate and drive the left-panel filter (sources, regions, bias lanes) so the user can narrow further after the AI discovery step.
+- [ ] **Right panel = cross-side insights** — the right panel should give insight from all sides: what each ideological/regional bloc is saying, what's being omitted, loaded language detected, Socratic questions. This is the core Perspective Engine output for the searched topic.
+- [ ] **History panel = all relevant players, not just Wikipedia** — user specifically said "history panel should get all relevant players from more than just Wikipedia." Pull from GDELT GKG, verified academic/gov sources, regional encyclopedias, and archived news. AI synthesizes into a narrative.
+
+### P1 — History Timeline (right panel)
+
+- [ ] **Multi-source historical feed** — the History tab in the right panel should draw from more than one source. Pull relevant historical context from GDELT, Internet Archive, academic/gov feeds, and regional sources. Cover all players involved, not just the Western framing.
+- [ ] **AI Analyze button on History** — add an Analyze button on the History tab that sends the collected historical context to the AI. Output: a linked narrative story with no bias, showing multiple perspectives on the key inflection points. Flag where sources disagree on the same historical event.
+- [ ] **Inflection point detection** — AI should identify and highlight the key turning points in the story's history (when did framing shift? when did a new player enter? when did tone diverge between sources?) and visualize them on the timeline.
+
+### P1 — Social Auth + Private Feeds
+
+- [ ] **Login screen with social OAuth** — add a login screen where the user authenticates with their social media accounts (X, Instagram, Facebook, Google) via OAuth. This is not email login — it's social identity login.
+- [ ] **Post-login private feed enablement** — once logged in, private/personalized feed data from connected accounts becomes available in the relevant panels (X timeline, IG feed, etc.) alongside the public aggregated content.
+- [ ] **Secure token vault + consent UI** — tokens stored securely (never exposed client-side), with a clear consent/permissions screen showing exactly what data will be accessed.
+
+### P1 — Vertical Topic Tabs (new content verticals)
+
+- [ ] **Sports tab** — add a Sports tab with multi-source sports feeds (RSS, open APIs). Categorize by sport and league. Show standings, scores, and sports news side by side. Add per-user favorites system so user pins their leagues.
+- [ ] **Cyber intel tab** — dedicated tab for cyber security: threat feeds, CVE trackers, CISA alerts, dark web signal, and security news from open sources. Filter by threat type (ransomware, APT, infra attack, data breach).
+- [ ] **Tech updates tab** — tech news tab covering AI/ML breakthroughs, startup funding, product launches, open-source releases. Source from HN, ArXiv abstracts, and open tech RSS. Keep same bias/framing analysis applied.
+- [ ] **Topic preference profile** — user can subscribe to any combination of verticals (Sports, Cyber, Tech, Finance, Science, etc.) and their feed + notifications reflect those preferences.
+
+### P1 — Data Breadth (non-AI model lock preserved)
+
+- [ ] Add global social signal ingestion (X, Reddit first; IG/FB/TikTok public sources where compliant). Keywords drive retrieval — posts shown as cards/bubbles in Social panel, never as search redirects.
+- [ ] Add government/institution packs (UN, EU, UK, FR, ES, DE) for official statements and updates.
+- [ ] Add satellite + tracking coverage (FIRMS, EONET, OpenSky, AIS) as location signal blocks in Map and Brief.
+- [ ] Science + Medicine section with full filtering capabilities matching the main news feed.
+
+### P1 — Finance Overhaul
+
+- [ ] Finance tab: track major indices, sectors, FX, commodities, crypto, and selected equities (like Bloomberg/Finviz style).
+- [ ] Add market-impact lane: tie headlines and geopolitical events directly to asset moves with evidence links.
+- [ ] Add AI summary for "what moved the market and why" with sourced evidence.
+- [ ] Add watchlist + alerting for user-selected assets.
+
+### P2 — UX Polish
+
+- [ ] Light/dark theme toggle.
+- [ ] Improve typography hierarchy and spacing system — current density feels cramped.
+- [ ] Refine card hierarchy, hover/focus states, and keyboard navigation.
+- [ ] Improve mobile responsive layout and panel behavior consistency (panels shouldn't break on resize).
+- [ ] Improve empty/loading states across Feed/Map/Analyze/Live/Finance — no blank panels, always show something useful.
+- [ ] Fix filter consistency — `Conflict` filter and other category filters should show all relevant RSS feeds AND relevant APIs, not just the AI prompt box. Call relevant APIs and RSS feeds for each filter.
+
+### P2 — Notifications + Distribution
+
+- [ ] Notifications system — push/in-app alerts for breaking stories, keyword hits, watchlist triggers.
+- [ ] Newsletter/email list — create email newsletter templates with story digests.
+
+### P2 — Product Ops
+
+- [ ] Run MCP user-journey audits (Feed, Map, Analyze, Live, Finance, Watchlist).
+- [ ] Create UI consistency checklist.
+- [ ] Define UX success metrics (latency, engagement, success rate, failure rate).
+- [ ] Keep queue synchronized in `.agent-sync/QUEUE.json` for Claude/Copilot handoff.
+
+---
+
+## Legacy Notes (raw)
+
 A-top bar that says FEED mao analyze finance...
 1- default tab should be map
 2- feed should be grid layout of the feed and posts only without the map
@@ -34,7 +128,6 @@ J- emailing list (create newsletter and templates)
 K- login gmail and auto link the sovial media to gmail if exists toshow data
 
 L-region historical facts and hostoricak reasosns why things got to the way it was from different varified sources such as hikam history, google search similarepeople with ur abuility to getthe data aboiut thehoistory of aplace and region,from historicaly accurateoplaces and simialre sources with ai generated analysis and sumamries
-
 
 M-right panel top bar has ground news mts and opinions remove that , and use the sources ony, use inspiration from mts for data and design
 

@@ -233,24 +233,8 @@ export function PerspectivePanel() {
       })).filter(p => p.title && p.url);
     };
 
-    const fetchNitter = async (): Promise<SocialPost[]> => {
-      const url = `https://nitter.poast.org/search/rss?q=${q}&f=tweets`;
-      const res = await fetch(`/api/rss-proxy?url=${encodeURIComponent(url)}`, { signal: AbortSignal.timeout(5000) });
-      if (!res.ok) return [];
-      const doc = new DOMParser().parseFromString(await res.text(), 'text/xml');
-      return Array.from(doc.querySelectorAll('item')).slice(0, 5).map(e => ({
-        title:  e.querySelector('title')?.textContent?.trim() ?? '',
-        url:    e.querySelector('link')?.textContent?.trim() ?? '',
-        author: e.querySelector('creator')?.textContent?.trim() ?? '@unknown',
-        ago:    formatAgo(e.querySelector('pubDate')?.textContent ?? ''),
-      })).filter(p => p.title && p.url);
-    };
-
-    Promise.allSettled([fetchReddit(), fetchNitter()]).then(([r, x]) => {
-      setSocialPosts({
-        reddit: r.status === 'fulfilled' ? r.value : [],
-        x:      x.status === 'fulfilled' ? x.value : [],
-      });
+    fetchReddit().then(posts => {
+      setSocialPosts({ reddit: posts, x: [] });
       setLoadingSocial(false);
     });
   }, [selectedCluster?.id]);
@@ -383,11 +367,20 @@ export function PerspectivePanel() {
     state: selectedCluster.articles.filter(a => getSourceById(a.sourceId)?.sourceType === 'state'),
   };
 
-  const mediaEmbeds = selectedCluster.articles
+  const allEmbeds = selectedCluster.articles
     .map(a => toMediaEmbed(a.url))
     .filter((m): m is MediaEmbed => Boolean(m))
-    .filter((media, idx, arr) => arr.findIndex(m => m.embedUrl === media.embedUrl) === idx)
+    .filter((media, idx, arr) => arr.findIndex(m => m.embedUrl === media.embedUrl) === idx);
+
+  // Video section: only actual video platforms (YouTube, Rumble, Kick)
+  const mediaEmbeds = allEmbeds
+    .filter(m => m.platform === 'youtube' || m.platform === 'rumble' || m.platform === 'kick')
     .slice(0, 4);
+
+  // Inline social embeds: Reddit/X/Meta from article URLs (Social Posts section uses fetched RSS posts instead)
+  const inlineSocialEmbeds = allEmbeds
+    .filter(m => m.platform === 'reddit' || m.platform === 'x' || m.platform === 'meta')
+    .slice(0, 3);
 
   const sevMeta = MTS_SEVERITY[selectedCluster.severity] ?? MTS_SEVERITY.info;
   const mtsCategory = MTS_CATEGORY_LABEL[selectedCluster.category] ?? 'General';
@@ -652,37 +645,48 @@ export function PerspectivePanel() {
                     <p className="text-[11px] text-white/80 leading-relaxed line-clamp-3">{post.title}</p>
                   </a>
                 ))}
+                {/* Inline Reddit embeds from article sources */}
+                {inlineSocialEmbeds.filter(e => e.platform === 'reddit').map((embed, i) => (
+                  <div key={`embed-${i}`} className="rounded border border-border overflow-hidden">
+                    <div className="px-2 py-1 border-b border-border text-[10px] font-mono text-orange-400/70">Reddit thread (from source)</div>
+                    <iframe src={embed.embedUrl} className="w-full h-40" loading="lazy"
+                      allow="encrypted-media" sandbox="allow-scripts allow-same-origin allow-popups" />
+                  </div>
+                ))}
               </div>
             ) : (
-              <p className="text-[11px] text-dim font-mono py-2">No Reddit posts found for this story.</p>
+              <div className="space-y-2">
+                <p className="text-[11px] text-dim font-mono py-1">No Reddit posts found for this story.</p>
+                {/* Still show inline Reddit embeds from article URLs if available */}
+                {inlineSocialEmbeds.filter(e => e.platform === 'reddit').map((embed, i) => (
+                  <div key={`embed-${i}`} className="rounded border border-border overflow-hidden">
+                    <div className="px-2 py-1 border-b border-border text-[10px] font-mono text-orange-400/70">Reddit thread (from source)</div>
+                    <iframe src={embed.embedUrl} className="w-full h-40" loading="lazy"
+                      allow="encrypted-media" sandbox="allow-scripts allow-same-origin allow-popups" />
+                  </div>
+                ))}
+              </div>
             )
           )}
 
           {activeSocialTab === 'x' && (
-            loadingSocial ? (
-              <div className="text-[10px] text-dim font-mono animate-pulse">Fetching X posts…</div>
-            ) : socialPosts.x.length > 0 ? (
-              <div className="space-y-2">
-                {socialPosts.x.map((post, i) => (
-                  <a key={i} href={post.url} target="_blank" rel="noopener noreferrer"
-                    className="block p-2.5 rounded border border-border bg-blue-500/5 hover:bg-blue-500/10 hover:border-blue-500/30 transition-colors group">
-                    <div className="flex items-center gap-1.5 mb-1">
-                      <span className="text-[10px] font-mono text-blue-400">{post.author}</span>
-                      {post.ago && <span className="text-[10px] text-dim">· {post.ago}</span>}
-                      <ExternalLink size={9} className="ml-auto text-dim opacity-0 group-hover:opacity-100 transition-opacity" />
-                    </div>
-                    <p className="text-[11px] text-white/80 leading-relaxed line-clamp-3">{post.title}</p>
-                  </a>
-                ))}
-              </div>
-            ) : (
-              <p className="text-[11px] text-dim font-mono py-2">X/Nitter may be unavailable. No posts loaded.</p>
-            )
+            <div className="flex flex-col items-center gap-3 py-4 text-center">
+              <p className="text-[11px] text-dim font-mono leading-relaxed max-w-[240px]">
+                X requires a paid API for programmatic access. Search for this story directly on X.
+              </p>
+              <a
+                href={`https://x.com/search?q=${encodeURIComponent(selectedCluster.headline)}&src=typed_query&f=live`}
+                target="_blank" rel="noopener noreferrer"
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded border border-blue-500/40 bg-blue-500/10 text-blue-400 text-[11px] font-mono hover:bg-blue-500/20 transition-colors"
+              >
+                Open X search <ExternalLink size={10} />
+              </a>
+            </div>
           )}
         </CollapsibleSection>
 
-        {/* Video */}
-        <CollapsibleSection id="video" title="Video" icon={<PlayCircle size={11} className="text-accent" />}
+        {/* Video — live coverage only (YouTube, Rumble, Kick), not social clips */}
+        <CollapsibleSection id="video" title="Video Coverage" icon={<PlayCircle size={11} className="text-accent" />}
           badge={mediaEmbeds.length > 1 ? `${activeVideoIdx + 1}/${mediaEmbeds.length}` : undefined}
           collapsed={collapsedSections} onToggle={toggleSection}>
           {mediaEmbeds.length > 0 ? (
@@ -713,7 +717,8 @@ export function PerspectivePanel() {
           ) : (
             <div className="rounded border border-border bg-black/20 py-6 flex flex-col items-center justify-center gap-2 text-dim mt-1">
               <PlayCircle size={20} className="opacity-30" />
-              <p className="text-[11px] font-mono text-center">No video found in article sources for this story.</p>
+              <p className="text-[11px] font-mono text-center">No video (YouTube/Rumble) found for this story.</p>
+              <p className="text-[10px] font-mono text-dim/60 text-center">Reddit and social posts are in the Social Posts tab above.</p>
             </div>
           )}
         </CollapsibleSection>
