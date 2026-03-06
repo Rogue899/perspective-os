@@ -4,6 +4,7 @@ export type PublicVideoLink = {
   platform: PublicVideoPlatform;
   label: string;
   url: string;
+  embedUrl?: string;
 };
 
 export function buildPublicVideoLinks(query: string): PublicVideoLink[] {
@@ -17,6 +18,8 @@ export function buildPublicVideoLinks(query: string): PublicVideoLink[] {
       platform: 'youtube',
       label: `YouTube: ${normalized}`,
       url: `https://www.youtube.com/results?search_query=${encoded}`,
+      // NOTE: YouTube removed listType=search embed support in 2023 — no embed available without video ID
+      // embedUrl intentionally omitted; UI shows search button instead
     },
     {
       platform: 'rumble',
@@ -35,8 +38,8 @@ export function buildPublicVideoLinks(query: string): PublicVideoLink[] {
     },
     {
       platform: 'x',
-      label: `X via Nitter: ${normalized}`,
-      url: `https://nitter.net/search?f=tweets&q=${encoded}`,
+      label: `X: ${normalized}`,
+      url: `https://x.com/search?q=${encoded}&src=typed_query`,
     },
   ];
 }

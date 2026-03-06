@@ -318,7 +318,7 @@ export function PerspectivePanel() {
 
   const publicVideoLinks = buildPublicVideoLinks(selectedCluster.headline);
   const activeBubble = publicVideoLinks.find(link => link.platform === activeBubblePlatform) ?? publicVideoLinks[0];
-  const fallbackVideoEmbedUrl = `https://www.youtube-nocookie.com/embed?listType=search&list=${encodeURIComponent(selectedCluster.headline)}`;
+  // YouTube removed listType=search embed support in 2023 — no iframe fallback available
   const sevMeta = MTS_SEVERITY[selectedCluster.severity] ?? MTS_SEVERITY.info;
   const mtsCategory = MTS_CATEGORY_LABEL[selectedCluster.category] ?? 'General';
 
@@ -566,15 +566,21 @@ export function PerspectivePanel() {
             </div>
           ) : (
             <div className="rounded border border-border overflow-hidden bg-black/30">
-              <div className="px-2 py-1 border-b border-border text-[10px] font-mono text-dim uppercase">YouTube topic video</div>
-              <iframe
-                src={fallbackVideoEmbedUrl}
-                title="youtube-topic-search"
-                className="w-full h-52"
-                loading="lazy"
-                allowFullScreen
-                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
-              />
+              <div className="px-2 py-1 border-b border-border text-[10px] font-mono text-dim uppercase">Search for video coverage</div>
+              <div className="p-2 flex flex-wrap gap-2">
+                {publicVideoLinks.map(link => (
+                  <a
+                    key={link.platform}
+                    href={link.url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex items-center gap-1.5 px-2 py-1 rounded bg-surface border border-border text-[11px] font-mono text-dim hover:text-white hover:border-accent transition-colors"
+                  >
+                    <span className="capitalize">{link.platform}</span>
+                    <ExternalLink size={10} />
+                  </a>
+                ))}
+              </div>
             </div>
           )}
 
