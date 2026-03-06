@@ -7,25 +7,6 @@ import { useApp } from '../../context/AppContext';
 import { analyzePerspectives } from '../../services/ai';
 import { X, Sparkles, ChevronDown, ChevronUp, ExternalLink, HelpCircle, Eye, AlertCircle, PlayCircle, Copy, Check, BookOpen } from 'lucide-react';
 import type { BiasColor } from '../../types';
-import { buildPublicVideoLinks } from '../../utils/public-video-links';
-import type { PublicVideoPlatform } from '../../utils/public-video-links';
-
-const PLATFORM_ICON: Record<PublicVideoPlatform, string> = {
-  youtube: '▶',
-  rumble:  '🎬',
-  kick:    '⚡',
-  reddit:  '🟠',
-  x:       '𝕏',
-};
-
-const PLATFORM_SHORT: Record<PublicVideoPlatform, string> = {
-  youtube: 'YouTube',
-  rumble:  'Rumble',
-  kick:    'Kick',
-  reddit:  'Reddit',
-  x:       'X',
-};
-
 // ── MTS-inspired severity + category system ───────────────────────────────────
 const MTS_SEVERITY: Record<string, { label: string; color: string; bg: string }> = {
   critical: { label: 'S5', color: 'text-red-400',    bg: 'bg-red-500/10 border-red-500/40' },
@@ -145,7 +126,7 @@ export function PerspectivePanel() {
   const [error, setError] = useState<string | null>(null);
   const [expandedSource, setExpandedSource] = useState<string | null>(null);
   const [verification, setVerification] = useState<Record<string, { label: string; confidence: number }>>({});
-  const [activeBubblePlatform, setActiveBubblePlatform] = useState<PublicVideoPlatform>('youtube');
+  const [activeVideoIdx, setActiveVideoIdx] = useState(0);
   const [copied, setCopied] = useState(false);
   const [showOpinions, setShowOpinions] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
@@ -316,9 +297,6 @@ export function PerspectivePanel() {
     .filter((media, idx, arr) => arr.findIndex(m => m.embedUrl === media.embedUrl) === idx)
     .slice(0, 4);
 
-  const publicVideoLinks = buildPublicVideoLinks(selectedCluster.headline);
-  const activeBubble = publicVideoLinks.find(link => link.platform === activeBubblePlatform) ?? publicVideoLinks[0];
-  // YouTube removed listType=search embed support in 2023 — no iframe fallback available
   const sevMeta = MTS_SEVERITY[selectedCluster.severity] ?? MTS_SEVERITY.info;
   const mtsCategory = MTS_CATEGORY_LABEL[selectedCluster.category] ?? 'General';
 
@@ -530,117 +508,104 @@ export function PerspectivePanel() {
           </div>
         </div>
 
-        {/* Media bubble */}
+        {/* Source Posts — text articles from cluster */}
+        <div className="px-4 py-3 border-b border-border">
+          <h4 className="text-[11px] font-mono uppercase tracking-wider text-dim mb-2 flex items-center gap-1.5">
+            <BookOpen size={11} className="text-accent" />
+            Source Posts
+          </h4>
+          <div className="space-y-2">
+            {selectedCluster.articles.slice(0, 6).map((article, idx) => {
+              const src = getSourceById(article.sourceId);
+              const raw = (article.description || article.title).replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+              const snippet = raw.length > 220 ? raw.slice(0, 217) + '…' : raw;
+              const ago = (() => {
+                const d = new Date(article.publishedAt);
+                if (isNaN(d.getTime())) return '';
+                const m = Math.floor((Date.now() - d.getTime()) / 60000);
+                if (m < 1) return 'just now';
+                if (m < 60) return `${m}m ago`;
+                const h = Math.floor(m / 60);
+                if (h < 24) return `${h}h ago`;
+                return `${Math.floor(h / 24)}d ago`;
+              })();
+              return (
+                <a
+                  key={idx}
+                  href={article.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="block rounded border border-border bg-surface/40 hover:bg-surface hover:border-accent/40 transition-colors p-2.5 group"
+                >
+                  <div className="flex items-center gap-1.5 mb-1">
+                    <span className={`text-[10px] font-mono font-semibold ${getBiasTextClass(src?.bias as BiasColor)}`}>
+                      {src?.name ?? article.sourceId}
+                    </span>
+                    {ago && <span className="text-[10px] text-dim">· {ago}</span>}
+                    <ExternalLink size={9} className="ml-auto text-dim opacity-0 group-hover:opacity-100 transition-opacity" />
+                  </div>
+                  <p className="text-[11px] font-mono text-white/80 leading-relaxed">{snippet}</p>
+                </a>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* Video Player — actual video embedded from article sources */}
         <div className="px-4 py-3 border-b border-border">
           <h4 className="text-[11px] font-mono uppercase tracking-wider text-dim mb-2 flex items-center gap-1.5">
             <PlayCircle size={11} className="text-accent" />
-            Media Bubble
+            Video
+            {mediaEmbeds.length > 1 && (
+              <span className="ml-auto text-[10px] text-dim font-mono">{activeVideoIdx + 1} / {mediaEmbeds.length}</span>
+            )}
           </h4>
-
           {mediaEmbeds.length > 0 ? (
-            <div className="grid grid-cols-1 gap-2">
-              {mediaEmbeds.map((media, idx) => (
-                <div key={`${media.embedUrl}-${idx}`} className="rounded border border-border overflow-hidden bg-black/30">
-                  <div className="px-2 py-1 border-b border-border flex items-center justify-between">
-                    <span className="text-[10px] font-mono text-dim uppercase">{media.platform}</span>
-                    <a
-                      href={media.originalUrl}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-[10px] text-accent hover:underline"
-                    >
-                      Open source
-                    </a>
-                  </div>
-                  <iframe
-                    src={media.embedUrl}
-                    title={`embed-${media.platform}-${idx}`}
-                    className="w-full h-52"
-                    loading="lazy"
-                    allowFullScreen
-                    referrerPolicy="no-referrer-when-downgrade"
-                    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
-                  />
-                </div>
-              ))}
-            </div>
-          ) : (
             <div className="rounded border border-border overflow-hidden bg-black/30">
-              <div className="px-2 py-1 border-b border-border text-[10px] font-mono text-dim uppercase">Search for video coverage</div>
-              <div className="p-2 flex flex-wrap gap-2">
-                {publicVideoLinks.map(link => (
+              <div className="px-2 py-1 border-b border-border flex items-center justify-between gap-2">
+                <span className="text-[10px] font-mono text-dim uppercase">{mediaEmbeds[activeVideoIdx].platform}</span>
+                <div className="flex items-center gap-2">
+                  {mediaEmbeds.length > 1 && (
+                    <>
+                      <button
+                        onClick={() => setActiveVideoIdx(i => Math.max(0, i - 1))}
+                        disabled={activeVideoIdx === 0}
+                        className="text-[11px] text-dim hover:text-white disabled:opacity-30"
+                      >◀</button>
+                      <button
+                        onClick={() => setActiveVideoIdx(i => Math.min(mediaEmbeds.length - 1, i + 1))}
+                        disabled={activeVideoIdx === mediaEmbeds.length - 1}
+                        className="text-[11px] text-dim hover:text-white disabled:opacity-30"
+                      >▶</button>
+                    </>
+                  )}
                   <a
-                    key={link.platform}
-                    href={link.url}
+                    href={mediaEmbeds[activeVideoIdx].originalUrl}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="flex items-center gap-1.5 px-2 py-1 rounded bg-surface border border-border text-[11px] font-mono text-dim hover:text-white hover:border-accent transition-colors"
+                    className="text-[10px] text-accent hover:underline flex items-center gap-1"
                   >
-                    <span className="capitalize">{link.platform}</span>
-                    <ExternalLink size={10} />
+                    Open <ExternalLink size={9} />
                   </a>
-                ))}
+                </div>
               </div>
+              <iframe
+                key={mediaEmbeds[activeVideoIdx].embedUrl}
+                src={mediaEmbeds[activeVideoIdx].embedUrl}
+                title={`video-${activeVideoIdx}`}
+                className="w-full h-52"
+                loading="lazy"
+                allowFullScreen
+                referrerPolicy="no-referrer-when-downgrade"
+                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+              />
+            </div>
+          ) : (
+            <div className="rounded border border-border bg-black/20 py-6 flex flex-col items-center justify-center gap-2 text-dim">
+              <PlayCircle size={20} className="opacity-30" />
+              <p className="text-[11px] font-mono text-center">No video found in article sources for this story.</p>
             </div>
           )}
-
-          <div className="mt-2 pt-2 border-t border-border">
-            <div className="text-[10px] text-dim font-mono mb-1">No-login source bubbles</div>
-            <div className="flex flex-wrap gap-1.5">
-              {publicVideoLinks.map(link => (
-                <button
-                  key={link.platform}
-                  onClick={() => setActiveBubblePlatform(link.platform)}
-                  className={`px-2 py-1 text-[10px] font-mono rounded border transition-colors flex items-center gap-1 ${
-                    activeBubblePlatform === link.platform
-                      ? 'border-accent text-accent bg-accent/10'
-                      : 'border-border text-dim hover:text-white hover:border-accent'
-                  }`}
-                >
-                  <span>{PLATFORM_ICON[link.platform]}</span>
-                  <span>{PLATFORM_SHORT[link.platform]}</span>
-                </button>
-              ))}
-            </div>
-            {activeBubble && (
-              <div className="mt-2 rounded border border-border overflow-hidden bg-black/30">
-                <div className="px-2 py-1 border-b border-border flex items-center justify-between gap-2">
-                  <span className="text-[10px] font-mono text-dim uppercase">
-                    {PLATFORM_ICON[activeBubble.platform]} {PLATFORM_SHORT[activeBubble.platform]}
-                  </span>
-                  <span className="text-[10px] text-dim font-mono truncate max-w-[200px]">{activeBubble.label.split(': ').slice(1).join(': ')}</span>
-                </div>
-                {activeBubble.embedUrl ? (
-                  <iframe
-                    key={activeBubble.embedUrl}
-                    src={activeBubble.embedUrl}
-                    title={`bubble-${activeBubble.platform}`}
-                    className="w-full h-64"
-                    loading="lazy"
-                    allowFullScreen
-                    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-                    referrerPolicy="no-referrer-when-downgrade"
-                    sandbox="allow-scripts allow-same-origin allow-presentation allow-popups"
-                  />
-                ) : (
-                  <div className="flex flex-col items-center justify-center gap-3 py-8 px-4">
-                    <span className="text-3xl">{PLATFORM_ICON[activeBubble.platform]}</span>
-                    <p className="text-[11px] text-dim text-center">
-                      {PLATFORM_SHORT[activeBubble.platform]} does not support embedded search.
-                    </p>
-                    <a
-                      href={activeBubble.url}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="px-3 py-1.5 text-[11px] font-mono rounded border border-accent text-accent hover:bg-accent/10 transition-colors"
-                    >
-                      Search on {PLATFORM_SHORT[activeBubble.platform]} ↗
-                    </a>
-                  </div>
-                )}
-              </div>
-            )}
-          </div>
         </div>
 
         {/* Loading skeleton while AI is analyzing */}
