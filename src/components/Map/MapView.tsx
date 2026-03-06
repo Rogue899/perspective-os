@@ -6,7 +6,32 @@ import { fetchEONETEvents, EONET_CATEGORY_COLOR, EONET_CATEGORY_ICON } from '../
 import type { EONETEvent } from '../../services/eonet';
 import { useApp } from '../../context/AppContext';
 import type { GdeltEvent } from '../../types';
-import { buildPublicVideoLinks } from '../../utils/public-video-links';
+import { buildEmbedUrl } from '../../config/live-channels';
+
+interface RegionChannel { id: string; name: string; channelId: string; }
+
+/** Return the most relevant live news channels for a given coordinate. */
+function getRegionChannels(lat: number, lng: number): RegionChannel[] {
+  const AJ   = { id: 'aljazeera', name: 'Al Jazeera',  channelId: 'UCNye-wNBqNL5ZzHSJdse7ng' };
+  const BBC  = { id: 'bbc',       name: 'BBC News',     channelId: 'UC16niRr50-MSBwiO3YDb3RA' };
+  const DW   = { id: 'dw',        name: 'DW News',      channelId: 'UCknLrEdhRCp1aegoMqRaCZg' };
+  const F24  = { id: 'france24',  name: 'France 24',    channelId: 'UCQfwfsi5VrQ8yKZ-UWmAEFg' };
+  const EURO = { id: 'euronews',  name: 'Euronews',     channelId: 'UCg7JaqKJTg7JGSJ8sBHmH5Q' };
+  const SKY  = { id: 'skynews',   name: 'Sky News',     channelId: 'UCoMdktPbSTixAyNGwb-UYkQ' };
+
+  // Middle East / North Africa
+  if (lng >= 20 && lng <= 65 && lat >= 8 && lat <= 42)  return [AJ, BBC, DW, F24];
+  // Europe
+  if (lng >= -12 && lng <= 45 && lat >= 34 && lat <= 72) return [BBC, EURO, F24, DW, SKY];
+  // North America
+  if (lng <= -50 && lng >= -170 && lat >= 15)            return [BBC, DW, F24];
+  // Sub-Saharan Africa
+  if (lat <= 15 && lng >= -20 && lng <= 55)              return [AJ, F24, BBC];
+  // East / South Asia
+  if (lng >= 60 && lat >= -15 && lat <= 55)              return [DW, BBC, AJ];
+  // Default (global)
+  return [AJ, BBC, DW, F24];
+}
 
 // Free tile source — no token needed
 const MAP_STYLE = 'https://tiles.openfreemap.org/styles/dark';
@@ -50,6 +75,7 @@ export function MapView() {
   const [userCoords, setUserCoords] = useState<{ lat: number; lng: number } | null>(null);
   const [floatingLocation, setFloatingLocation] = useState<{ name: string; lat: number; lng: number } | null>(null);
   const [floatingTab, setFloatingTab] = useState<'news' | 'video'>('news');
+  const [activeVideoChannel, setActiveVideoChannel] = useState<string | null>(null);
 
   const distanceKm = useCallback((aLat: number, aLng: number, bLat: number, bLng: number) => {
     const toRad = (v: number) => (v * Math.PI) / 180;
@@ -81,25 +107,9 @@ export function MapView() {
     return merged.slice(0, 6);
   }, [clusters, distanceKm]);
 
-  const locationVideoLinks = floatingLocation
-    ? buildPublicVideoLinks(`${floatingLocation.name} latest news`)
+  const regionChannels = floatingLocation
+    ? getRegionChannels(floatingLocation.lat, floatingLocation.lng)
     : [];
-
-  const linkTone: Record<string, string> = {
-    youtube: 'hover:border-red-500/40 hover:bg-red-500/5',
-    rumble:  'hover:border-green-500/40 hover:bg-green-500/5',
-    kick:    'hover:border-emerald-500/40 hover:bg-emerald-500/5',
-    reddit:  'hover:border-orange-500/40 hover:bg-orange-500/5',
-    x:       'hover:border-blue-500/40 hover:bg-blue-500/5',
-  };
-
-  const platformIcon: Record<string, string> = {
-    youtube: '▶',
-    rumble:  '🎬',
-    kick:    '⚡',
-    reddit:  '🟠',
-    x:       '𝕏',
-  };
 
   const platformShort: Record<string, string> = {
     youtube: 'YouTube',
@@ -512,24 +522,44 @@ export function MapView() {
             </div>
           ) : (
             <div className="p-2.5 space-y-2">
-              <div className="text-[10px] text-dim font-mono">No-login video/social searches</div>
-              {locationVideoLinks.map(link => (
-                <a
-                  key={link.platform}
-                  href={link.url}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className={`flex items-center gap-2 p-2 rounded border border-border text-[11px] text-white ${linkTone[link.platform] || 'hover:border-accent/40 hover:bg-accent/5'}`}
-                >
-                  <span className="text-base leading-none">{platformIcon[link.platform] ?? '▶'}</span>
-                  <span>{platformShort[link.platform] ?? link.platform}: {floatingLocation?.name} news</span>
-                </a>
-              ))}
-              {userCoords && (
-                <div className="text-[9px] text-dim font-mono pt-1 border-t border-border">
-                  Personalized from your geolocation
-                </div>
-              )}
+              {/* Channel tabs */}
+              <div className="flex gap-1 flex-wrap pb-2 border-b border-border mb-2">
+                {regionChannels.map(ch => {
+                  const isActive = (activeVideoChannel ?? regionChannels[0]?.id) === ch.id;
+                  return (
+                    <button
+                      key={ch.id}
+                      onClick={() => setActiveVideoChannel(ch.id)}
+                      className={`px-2 py-1 text-[10px] font-mono rounded border transition-colors ${
+                        isActive ? 'bg-accent/15 text-accent border-accent/30' : 'text-dim hover:text-white border-border hover:border-accent/40'
+                      }`}
+                    >
+                      {ch.name}
+                    </button>
+                  );
+                })}
+              </div>
+              {/* Embedded player */}
+              {(() => {
+                const active = regionChannels.find(c => c.id === (activeVideoChannel ?? regionChannels[0]?.id)) ?? regionChannels[0];
+                if (!active) return <div className="text-[10px] text-dim font-mono py-4 text-center">No channels available.</div>;
+                return (
+                  <div className="rounded overflow-hidden border border-border bg-black/40">
+                    <div className="px-2 py-1 border-b border-border text-[10px] font-mono text-dim flex items-center justify-between">
+                      <span>▶ {active.name} — Live</span>
+                      <span className="text-[9px] opacity-50">May show offline if not streaming</span>
+                    </div>
+                    <iframe
+                      key={active.channelId}
+                      src={buildEmbedUrl(active.channelId)}
+                      className="w-full h-48"
+                      allow="autoplay; encrypted-media; picture-in-picture"
+                      allowFullScreen
+                      title={active.name}
+                    />
+                  </div>
+                );
+              })()}
             </div>
           )}
         </div>

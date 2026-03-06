@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, type ReactNode } from 'react';
 import { OpinionPanel } from './OpinionPanel';
 import { HistoricalPanel } from './HistoricalPanel';
 import type { StoryCluster, PerspectiveAnalysis, SourcePerspective } from '../../types';
@@ -7,6 +7,45 @@ import { useApp } from '../../context/AppContext';
 import { analyzePerspectives } from '../../services/ai';
 import { X, Sparkles, ChevronDown, ChevronUp, ExternalLink, HelpCircle, Eye, AlertCircle, PlayCircle, Copy, Check, BookOpen } from 'lucide-react';
 import type { BiasColor } from '../../types';
+// ── Shared helpers ────────────────────────────────────────────────────────────
+
+type SocialPost = { title: string; url: string; author: string; ago: string };
+
+function formatAgo(dateStr: string | Date): string {
+  const d = typeof dateStr === 'string' ? new Date(dateStr) : dateStr;
+  if (isNaN(d.getTime())) return '';
+  const m = Math.floor((Date.now() - d.getTime()) / 60000);
+  if (m < 1) return 'just now';
+  if (m < 60) return `${m}m ago`;
+  const h = Math.floor(m / 60);
+  if (h < 24) return `${h}h ago`;
+  return `${Math.floor(h / 24)}d ago`;
+}
+
+// Collapsible section wrapper used for all pre-analysis content blocks
+function CollapsibleSection({ id, title, icon, badge, children, collapsed, onToggle }: {
+  id: string; title: string; icon?: ReactNode; badge?: string;
+  children: ReactNode; collapsed: Set<string>; onToggle: (id: string) => void;
+}) {
+  const open = !collapsed.has(id);
+  return (
+    <div className="border-b border-border">
+      <button
+        onClick={() => onToggle(id)}
+        className="w-full px-4 py-2.5 flex items-center justify-between hover:bg-white/[0.02] transition-colors"
+      >
+        <span className="text-[11px] font-mono uppercase tracking-wider text-dim flex items-center gap-1.5">
+          {icon}
+          {title}
+          {badge && <span className="text-[9px] normal-case font-normal text-dim/50 ml-1">{badge}</span>}
+        </span>
+        <ChevronDown size={11} className={`text-dim/50 transition-transform duration-150 shrink-0 ${open ? '' : '-rotate-90'}`} />
+      </button>
+      {open && <div className="px-4 pb-3">{children}</div>}
+    </div>
+  );
+}
+
 // ── MTS-inspired severity + category system ───────────────────────────────────
 const MTS_SEVERITY: Record<string, { label: string; color: string; bg: string }> = {
   critical: { label: 'S5', color: 'text-red-400',    bg: 'bg-red-500/10 border-red-500/40' },
@@ -127,6 +166,17 @@ export function PerspectivePanel() {
   const [expandedSource, setExpandedSource] = useState<string | null>(null);
   const [verification, setVerification] = useState<Record<string, { label: string; confidence: number }>>({});
   const [activeVideoIdx, setActiveVideoIdx] = useState(0);
+  const [collapsedSections, setCollapsedSections] = useState<Set<string>>(new Set());
+  const [socialPosts, setSocialPosts] = useState<{ reddit: SocialPost[]; x: SocialPost[] }>({ reddit: [], x: [] });
+  const [loadingSocial, setLoadingSocial] = useState(false);
+  const [activeSocialTab, setActiveSocialTab] = useState<'reddit' | 'x' | 'ig' | 'fb'>('reddit');
+
+  const toggleSection = (id: string) =>
+    setCollapsedSections(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
   const [copied, setCopied] = useState(false);
   const [showOpinions, setShowOpinions] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
@@ -161,6 +211,48 @@ export function PerspectivePanel() {
         setPolyPredictions(relevant);
       })
       .catch(() => setPolyPredictions([]));
+  }, [selectedCluster?.id]);
+
+  // Fetch social posts (Reddit + X/Nitter) when cluster changes
+  useEffect(() => {
+    if (!selectedCluster) return;
+    const q = encodeURIComponent(selectedCluster.headline.split(' ').slice(0, 7).join(' '));
+    setLoadingSocial(true);
+    setSocialPosts({ reddit: [], x: [] });
+
+    const fetchReddit = async (): Promise<SocialPost[]> => {
+      const url = `https://www.reddit.com/search.rss?q=${q}&sort=top&t=week&limit=5`;
+      const res = await fetch(`/api/rss-proxy?url=${encodeURIComponent(url)}`, { signal: AbortSignal.timeout(6000) });
+      if (!res.ok) return [];
+      const doc = new DOMParser().parseFromString(await res.text(), 'text/xml');
+      return Array.from(doc.querySelectorAll('entry')).slice(0, 5).map(e => ({
+        title: e.querySelector('title')?.textContent?.trim() ?? '',
+        url:   e.querySelector('link')?.getAttribute('href') ?? e.querySelector('id')?.textContent ?? '',
+        author: e.querySelector('author name')?.textContent?.trim() ?? 'u/unknown',
+        ago:   formatAgo(e.querySelector('updated')?.textContent ?? ''),
+      })).filter(p => p.title && p.url);
+    };
+
+    const fetchNitter = async (): Promise<SocialPost[]> => {
+      const url = `https://nitter.poast.org/search/rss?q=${q}&f=tweets`;
+      const res = await fetch(`/api/rss-proxy?url=${encodeURIComponent(url)}`, { signal: AbortSignal.timeout(5000) });
+      if (!res.ok) return [];
+      const doc = new DOMParser().parseFromString(await res.text(), 'text/xml');
+      return Array.from(doc.querySelectorAll('item')).slice(0, 5).map(e => ({
+        title:  e.querySelector('title')?.textContent?.trim() ?? '',
+        url:    e.querySelector('link')?.textContent?.trim() ?? '',
+        author: e.querySelector('creator')?.textContent?.trim() ?? '@unknown',
+        ago:    formatAgo(e.querySelector('pubDate')?.textContent ?? ''),
+      })).filter(p => p.title && p.url);
+    };
+
+    Promise.allSettled([fetchReddit(), fetchNitter()]).then(([r, x]) => {
+      setSocialPosts({
+        reddit: r.status === 'fulfilled' ? r.value : [],
+        x:      x.status === 'fulfilled' ? x.value : [],
+      });
+      setLoadingSocial(false);
+    });
   }, [selectedCluster?.id]);
 
   const copyReport = useCallback(() => {
@@ -416,25 +508,17 @@ export function PerspectivePanel() {
           </div>
         </div>
 
-        {/* MTS-inspired: Related Prediction Markets */}
+        {/* Prediction Markets */}
         {polyPredictions.length > 0 && (
-          <div className="px-4 py-3 border-b border-border">
-            <h4 className="text-[11px] font-mono uppercase tracking-wider text-accent mb-2 flex items-center gap-1.5">
-              <span>📊</span> Related Prediction Markets
-              <span className="text-[9px] text-dim font-normal normal-case ml-1">via Polymarket</span>
-            </h4>
-            <div className="space-y-2">
+          <CollapsibleSection id="markets" title="Prediction Markets" icon="📊" badge="via Polymarket"
+            collapsed={collapsedSections} onToggle={toggleSection}>
+            <div className="space-y-2 pt-1">
               {polyPredictions.map((market, i) => {
                 const pct = Math.round(market.probability * 100);
                 const barColor = pct > 65 ? 'bg-green-500' : pct > 35 ? 'bg-yellow-500' : 'bg-red-500';
                 return (
-                  <a
-                    key={i}
-                    href={market.url}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="block p-2 rounded border border-border hover:border-accent/50 bg-white/[0.02] transition-colors"
-                  >
+                  <a key={i} href={market.url} target="_blank" rel="noopener noreferrer"
+                    className="block p-2 rounded border border-border hover:border-accent/50 bg-white/[0.02] transition-colors">
                     <div className="flex items-center justify-between gap-2 mb-1">
                       <span className="text-[11px] text-white/85 line-clamp-1 flex-1">{market.question}</span>
                       <span className={`text-[11px] font-mono font-semibold shrink-0 ${
@@ -448,24 +532,24 @@ export function PerspectivePanel() {
                 );
               })}
             </div>
-          </div>
+          </CollapsibleSection>
         )}
 
-        {/* Quick journalist brief */}
-        <div className="px-4 py-3 border-b border-border space-y-2">
-          <h4 className="text-[11px] font-mono uppercase tracking-wider text-accent">Quick Cross-Source Brief</h4>
-          <div className="grid grid-cols-1 gap-2">
+        {/* Quick Cross-Source Brief */}
+        <CollapsibleSection id="brief" title="Cross-Source Brief"
+          collapsed={collapsedSections} onToggle={toggleSection}>
+          <div className="grid grid-cols-1 gap-2 pt-1">
             <QuickSide title="Left / Progressive" text={summarizeSide(grouped.left)} tone="text-blue-300" />
             <QuickSide title="Center / Wire" text={summarizeSide(grouped.center)} tone="text-gray-300" />
             <QuickSide title="Right / Nationalist" text={summarizeSide(grouped.right)} tone="text-red-300" />
             <QuickSide title="State Media" text={summarizeSide(grouped.state)} tone="text-purple-300" />
           </div>
-        </div>
+        </CollapsibleSection>
 
-        {/* Quick source actions */}
-        <div className="px-4 py-3 border-b border-border">
-          <h4 className="text-[11px] font-mono uppercase tracking-wider text-dim mb-2">Source snapshots</h4>
-          <div className="space-y-2">
+        {/* Source Snapshots */}
+        <CollapsibleSection id="snapshots" title="Source Snapshots"
+          collapsed={collapsedSections} onToggle={toggleSection}>
+          <div className="space-y-2 pt-1">
             {selectedCluster.articles.slice(0, 8).map(article => {
               const src = getSourceById(article.sourceId);
               const meta = verification[article.sourceId];
@@ -480,19 +564,13 @@ export function PerspectivePanel() {
                   </div>
                   <p className="text-[11px] text-white/85 line-clamp-2 mb-2">{article.description || article.title}</p>
                   <div className="flex items-center gap-2">
-                    <a
-                      href={article.url}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-[10px] px-2 py-1 rounded border border-accent/40 text-accent hover:bg-accent/10"
-                    >
+                    <a href={article.url} target="_blank" rel="noopener noreferrer"
+                      className="text-[10px] px-2 py-1 rounded border border-accent/40 text-accent hover:bg-accent/10">
                       Read
                     </a>
                     {isUnverifiedLane && (
-                      <button
-                        onClick={() => verifySource(article.sourceId)}
-                        className="text-[10px] px-2 py-1 rounded border border-amber-500/40 text-amber-300 hover:bg-amber-500/10"
-                      >
+                      <button onClick={() => verifySource(article.sourceId)}
+                        className="text-[10px] px-2 py-1 rounded border border-amber-500/40 text-amber-300 hover:bg-amber-500/10">
                         AI Verify
                       </button>
                     )}
@@ -506,42 +584,24 @@ export function PerspectivePanel() {
               );
             })}
           </div>
-        </div>
+        </CollapsibleSection>
 
-        {/* Source Posts — text articles from cluster */}
-        <div className="px-4 py-3 border-b border-border">
-          <h4 className="text-[11px] font-mono uppercase tracking-wider text-dim mb-2 flex items-center gap-1.5">
-            <BookOpen size={11} className="text-accent" />
-            Source Posts
-          </h4>
-          <div className="space-y-2">
+        {/* Source Posts */}
+        <CollapsibleSection id="sourceposts" title="Source Posts" icon={<BookOpen size={11} className="text-accent" />}
+          collapsed={collapsedSections} onToggle={toggleSection}>
+          <div className="space-y-2 pt-1">
             {selectedCluster.articles.slice(0, 6).map((article, idx) => {
               const src = getSourceById(article.sourceId);
               const raw = (article.description || article.title).replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
               const snippet = raw.length > 220 ? raw.slice(0, 217) + '…' : raw;
-              const ago = (() => {
-                const d = new Date(article.publishedAt);
-                if (isNaN(d.getTime())) return '';
-                const m = Math.floor((Date.now() - d.getTime()) / 60000);
-                if (m < 1) return 'just now';
-                if (m < 60) return `${m}m ago`;
-                const h = Math.floor(m / 60);
-                if (h < 24) return `${h}h ago`;
-                return `${Math.floor(h / 24)}d ago`;
-              })();
               return (
-                <a
-                  key={idx}
-                  href={article.url}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="block rounded border border-border bg-surface/40 hover:bg-surface hover:border-accent/40 transition-colors p-2.5 group"
-                >
+                <a key={idx} href={article.url} target="_blank" rel="noopener noreferrer"
+                  className="block rounded border border-border bg-surface/40 hover:bg-surface hover:border-accent/40 transition-colors p-2.5 group">
                   <div className="flex items-center gap-1.5 mb-1">
                     <span className={`text-[10px] font-mono font-semibold ${getBiasTextClass(src?.bias as BiasColor)}`}>
                       {src?.name ?? article.sourceId}
                     </span>
-                    {ago && <span className="text-[10px] text-dim">· {ago}</span>}
+                    <span className="text-[10px] text-dim">· {formatAgo(article.publishedAt)}</span>
                     <ExternalLink size={9} className="ml-auto text-dim opacity-0 group-hover:opacity-100 transition-opacity" />
                   </div>
                   <p className="text-[11px] font-mono text-white/80 leading-relaxed">{snippet}</p>
@@ -549,64 +609,114 @@ export function PerspectivePanel() {
               );
             })}
           </div>
-        </div>
+        </CollapsibleSection>
 
-        {/* Video Player — actual video embedded from article sources */}
-        <div className="px-4 py-3 border-b border-border">
-          <h4 className="text-[11px] font-mono uppercase tracking-wider text-dim mb-2 flex items-center gap-1.5">
-            <PlayCircle size={11} className="text-accent" />
-            Video
-            {mediaEmbeds.length > 1 && (
-              <span className="ml-auto text-[10px] text-dim font-mono">{activeVideoIdx + 1} / {mediaEmbeds.length}</span>
-            )}
-          </h4>
+        {/* Social Posts — Reddit, X, locked IG/FB */}
+        <CollapsibleSection id="social" title="Social Posts" icon="🌐"
+          collapsed={collapsedSections} onToggle={toggleSection}>
+          {/* Platform tabs */}
+          <div className="flex gap-1 pt-1 pb-2 flex-wrap">
+            {(['reddit', 'x', 'ig', 'fb'] as const).map(tab => {
+              const locked = tab === 'ig' || tab === 'fb';
+              const labels: Record<string, string> = { reddit: '🟠 Reddit', x: '𝕏 X', ig: '📷 Instagram', fb: '👥 Facebook' };
+              return (
+                <button key={tab} onClick={() => !locked && setActiveSocialTab(tab)} disabled={locked}
+                  className={`px-2 py-1 text-[10px] font-mono rounded border transition-colors flex items-center gap-1 ${
+                    activeSocialTab === tab && !locked
+                      ? 'bg-accent/15 text-accent border-accent/30'
+                      : locked
+                      ? 'text-dim/30 border-border/30 cursor-not-allowed'
+                      : 'text-dim hover:text-white border-border hover:border-accent/40'
+                  }`}>
+                  {labels[tab]}
+                  {locked && <span className="text-[8px] text-dim/40">🔒</span>}
+                </button>
+              );
+            })}
+          </div>
+
+          {/* Content */}
+          {activeSocialTab === 'reddit' && (
+            loadingSocial ? (
+              <div className="text-[10px] text-dim font-mono animate-pulse">Fetching Reddit posts…</div>
+            ) : socialPosts.reddit.length > 0 ? (
+              <div className="space-y-2">
+                {socialPosts.reddit.map((post, i) => (
+                  <a key={i} href={post.url} target="_blank" rel="noopener noreferrer"
+                    className="block p-2.5 rounded border border-border bg-orange-500/5 hover:bg-orange-500/10 hover:border-orange-500/30 transition-colors group">
+                    <div className="flex items-center gap-1.5 mb-1">
+                      <span className="text-[10px] font-mono text-orange-400">{post.author}</span>
+                      {post.ago && <span className="text-[10px] text-dim">· {post.ago}</span>}
+                      <ExternalLink size={9} className="ml-auto text-dim opacity-0 group-hover:opacity-100 transition-opacity" />
+                    </div>
+                    <p className="text-[11px] text-white/80 leading-relaxed line-clamp-3">{post.title}</p>
+                  </a>
+                ))}
+              </div>
+            ) : (
+              <p className="text-[11px] text-dim font-mono py-2">No Reddit posts found for this story.</p>
+            )
+          )}
+
+          {activeSocialTab === 'x' && (
+            loadingSocial ? (
+              <div className="text-[10px] text-dim font-mono animate-pulse">Fetching X posts…</div>
+            ) : socialPosts.x.length > 0 ? (
+              <div className="space-y-2">
+                {socialPosts.x.map((post, i) => (
+                  <a key={i} href={post.url} target="_blank" rel="noopener noreferrer"
+                    className="block p-2.5 rounded border border-border bg-blue-500/5 hover:bg-blue-500/10 hover:border-blue-500/30 transition-colors group">
+                    <div className="flex items-center gap-1.5 mb-1">
+                      <span className="text-[10px] font-mono text-blue-400">{post.author}</span>
+                      {post.ago && <span className="text-[10px] text-dim">· {post.ago}</span>}
+                      <ExternalLink size={9} className="ml-auto text-dim opacity-0 group-hover:opacity-100 transition-opacity" />
+                    </div>
+                    <p className="text-[11px] text-white/80 leading-relaxed line-clamp-3">{post.title}</p>
+                  </a>
+                ))}
+              </div>
+            ) : (
+              <p className="text-[11px] text-dim font-mono py-2">X/Nitter may be unavailable. No posts loaded.</p>
+            )
+          )}
+        </CollapsibleSection>
+
+        {/* Video */}
+        <CollapsibleSection id="video" title="Video" icon={<PlayCircle size={11} className="text-accent" />}
+          badge={mediaEmbeds.length > 1 ? `${activeVideoIdx + 1}/${mediaEmbeds.length}` : undefined}
+          collapsed={collapsedSections} onToggle={toggleSection}>
           {mediaEmbeds.length > 0 ? (
-            <div className="rounded border border-border overflow-hidden bg-black/30">
+            <div className="rounded border border-border overflow-hidden bg-black/30 mt-1">
               <div className="px-2 py-1 border-b border-border flex items-center justify-between gap-2">
                 <span className="text-[10px] font-mono text-dim uppercase">{mediaEmbeds[activeVideoIdx].platform}</span>
                 <div className="flex items-center gap-2">
                   {mediaEmbeds.length > 1 && (
                     <>
-                      <button
-                        onClick={() => setActiveVideoIdx(i => Math.max(0, i - 1))}
-                        disabled={activeVideoIdx === 0}
-                        className="text-[11px] text-dim hover:text-white disabled:opacity-30"
-                      >◀</button>
-                      <button
-                        onClick={() => setActiveVideoIdx(i => Math.min(mediaEmbeds.length - 1, i + 1))}
-                        disabled={activeVideoIdx === mediaEmbeds.length - 1}
-                        className="text-[11px] text-dim hover:text-white disabled:opacity-30"
-                      >▶</button>
+                      <button onClick={() => setActiveVideoIdx(i => Math.max(0, i - 1))} disabled={activeVideoIdx === 0}
+                        className="text-[11px] text-dim hover:text-white disabled:opacity-30">◀</button>
+                      <button onClick={() => setActiveVideoIdx(i => Math.min(mediaEmbeds.length - 1, i + 1))} disabled={activeVideoIdx === mediaEmbeds.length - 1}
+                        className="text-[11px] text-dim hover:text-white disabled:opacity-30">▶</button>
                     </>
                   )}
-                  <a
-                    href={mediaEmbeds[activeVideoIdx].originalUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-[10px] text-accent hover:underline flex items-center gap-1"
-                  >
+                  <a href={mediaEmbeds[activeVideoIdx].originalUrl} target="_blank" rel="noopener noreferrer"
+                    className="text-[10px] text-accent hover:underline flex items-center gap-1">
                     Open <ExternalLink size={9} />
                   </a>
                 </div>
               </div>
-              <iframe
-                key={mediaEmbeds[activeVideoIdx].embedUrl}
-                src={mediaEmbeds[activeVideoIdx].embedUrl}
-                title={`video-${activeVideoIdx}`}
-                className="w-full h-52"
-                loading="lazy"
-                allowFullScreen
+              <iframe key={mediaEmbeds[activeVideoIdx].embedUrl} src={mediaEmbeds[activeVideoIdx].embedUrl}
+                title={`video-${activeVideoIdx}`} className="w-full h-52" loading="lazy" allowFullScreen
                 referrerPolicy="no-referrer-when-downgrade"
                 allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
               />
             </div>
           ) : (
-            <div className="rounded border border-border bg-black/20 py-6 flex flex-col items-center justify-center gap-2 text-dim">
+            <div className="rounded border border-border bg-black/20 py-6 flex flex-col items-center justify-center gap-2 text-dim mt-1">
               <PlayCircle size={20} className="opacity-30" />
               <p className="text-[11px] font-mono text-center">No video found in article sources for this story.</p>
             </div>
           )}
-        </div>
+        </CollapsibleSection>
 
         {/* Loading skeleton while AI is analyzing */}
         {!analysis && loading && (
