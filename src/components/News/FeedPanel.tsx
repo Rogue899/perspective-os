@@ -107,6 +107,9 @@ export function FeedPanel({ onRefresh, defaultGrid }: { onRefresh?: () => void; 
   const [feedStatuses, setFeedStatuses] = useState<Array<{ feedId: string; state: CircuitState; error: string | null }>>([]);
   const [keywordsLoading, setKeywordsLoading] = useState(false);
   const [selectedKeyword, setSelectedKeyword] = useState<string | null>(null);
+  const [discoveryInput, setDiscoveryInput] = useState('');
+  const [discoveryKeywords, setDiscoveryKeywords] = useState<string[]>([]);
+  const [discoveryLoading, setDiscoveryLoading] = useState(false);
   const [hitsExpanded, setHitsExpanded] = useState(false);
   const [gridCols, setGridCols] = useState(2); // 2–4 columns in grid view
   const allSources = getAllSources();
@@ -282,6 +285,26 @@ export function FeedPanel({ onRefresh, defaultGrid }: { onRefresh?: () => void; 
     finally { setGeoLoading(false); }
   }, [geo, geoActive]);
 
+  // ── Analyze discovery search (LLM-assisted keyword expansion) ──────────────
+  const runDiscoverySearch = useCallback(async () => {
+    const topic = discoveryInput.trim();
+    if (!topic) return;
+    setDiscoveryLoading(true);
+    try {
+      const topHeadlines = clusters.slice(0, 8).map(c => c.headline);
+      const generated = await generateKeywords(topic, topHeadlines);
+      const keywords = Array.from(new Set([topic, ...generated])).slice(0, 10);
+      setDiscoveryKeywords(keywords);
+      setSelectedKeyword(keywords[0] ?? topic);
+    } catch {
+      const fallback = topic.split(/\s+/).filter(Boolean).slice(0, 8);
+      setDiscoveryKeywords([topic, ...fallback]);
+      setSelectedKeyword(topic);
+    } finally {
+      setDiscoveryLoading(false);
+    }
+  }, [clusters, discoveryInput]);
+
   // ── Client-side filtering ───────────────────────────────────────────────────
   // Keyword regex fallback — catches stories AI classified as 'general' but whose text matches
   const CATEGORY_KEYWORDS: Partial<Record<EventCategory, RegExp>> = {
@@ -373,6 +396,25 @@ export function FeedPanel({ onRefresh, defaultGrid }: { onRefresh?: () => void; 
             !c.articles.some(a => a.title.toLowerCase().includes(locName.split(',')[0].toLowerCase()))) {
           return false;
         }
+      }
+    }
+
+    // Analyze discovery + left filter pipeline integration
+    if (activePanel === 'analysis') {
+      const haystack = `${c.headline} ${c.articles.map(a => `${a.title} ${a.description ?? ''}`).join(' ')}`.toLowerCase();
+      const norm = (value: string) => value.toLowerCase().replace(/^rumou?r:\s*/i, '').replace(/^hashtag[: ]*/i, '').trim();
+
+      if (discoveryKeywords.length > 0) {
+        const keywordMatch = discoveryKeywords.some(kw => {
+          const needle = norm(kw);
+          return needle.length >= 3 && haystack.includes(needle);
+        });
+        if (!keywordMatch) return false;
+      }
+
+      if (selectedKeyword) {
+        const selected = norm(selectedKeyword);
+        if (selected.length >= 2 && !haystack.includes(selected)) return false;
       }
     }
 
@@ -525,6 +567,62 @@ export function FeedPanel({ onRefresh, defaultGrid }: { onRefresh?: () => void; 
           <option value={4}>4+ sources</option>
         </select>
       </div>
+
+      {/* Analyze middle discovery search */}
+      {activePanel === 'analysis' && (
+        <div className="px-3 py-2 border-b border-border/70 shrink-0 space-y-2">
+          <div className="flex items-center gap-2">
+            <input
+              value={discoveryInput}
+              onChange={e => setDiscoveryInput(e.target.value)}
+              onKeyDown={e => {
+                if (e.key === 'Enter') {
+                  e.preventDefault();
+                  void runDiscoverySearch();
+                }
+              }}
+              placeholder="Analyze topic (e.g., Red Sea shipping attacks, Gaza ceasefire, Taiwan drills)"
+              className="flex-1 text-[10px] font-mono bg-surface border border-border rounded px-2 py-1.5 text-dim hover:text-white focus:outline-none focus:border-accent"
+            />
+            <button
+              onClick={() => void runDiscoverySearch()}
+              disabled={!discoveryInput.trim() || discoveryLoading}
+              className="px-2 py-1.5 text-[10px] font-mono rounded border border-accent/40 text-accent hover:bg-accent/10 disabled:opacity-50"
+            >
+              {discoveryLoading ? 'Searching…' : 'Discover'}
+            </button>
+            {(discoveryKeywords.length > 0 || selectedKeyword) && (
+              <button
+                onClick={() => {
+                  setDiscoveryInput('');
+                  setDiscoveryKeywords([]);
+                  setSelectedKeyword(null);
+                }}
+                className="px-2 py-1.5 text-[10px] font-mono rounded border border-border text-dim hover:text-white"
+              >
+                Clear
+              </button>
+            )}
+          </div>
+          {discoveryKeywords.length > 0 && (
+            <div className="flex gap-1.5 flex-wrap">
+              {discoveryKeywords.map(kw => (
+                <button
+                  key={kw}
+                  onClick={() => setSelectedKeyword(selectedKeyword === kw ? null : kw)}
+                  className={`px-2 py-0.5 text-[9px] font-mono rounded border transition-colors ${
+                    selectedKeyword === kw
+                      ? 'border-accent text-accent bg-accent/10'
+                      : 'border-border text-dim hover:text-white hover:border-accent/50 hover:bg-white/5'
+                  }`}
+                >
+                  {kw}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Scope selector — Global / Regional / Local */}
       <div className="flex items-center gap-1 px-3 py-1.5 border-b border-border shrink-0">

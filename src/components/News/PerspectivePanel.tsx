@@ -498,6 +498,12 @@ export function PerspectivePanel() {
 
   const groundNewsUrl = `https://ground.news/search?query=${encodeURIComponent(selectedCluster.headline)}`;
 
+  const summarizeBloc = (rows: SourcePerspective[]) => {
+    if (!rows.length) return 'No clear framing signals in this cluster.';
+    const sample = rows[0].mainFrame?.trim() || '';
+    return sample.length > 150 ? `${sample.slice(0, 147)}...` : sample;
+  };
+
   return (
     <div className="absolute inset-y-0 right-0 w-full sm:w-[520px] bg-surface border-l border-border z-40 flex flex-col shadow-2xl">
       {/* Opinion Panel overlay (z-50, same right edge) */}
@@ -944,6 +950,35 @@ export function PerspectivePanel() {
         {/* Analysis results */}
         {analysis && (
           <div className="divide-y divide-border">
+            <Section title="All-Sides Synthesis" icon="◉" color="text-cyan-300">
+              <div className="grid grid-cols-1 gap-2">
+                <QuickSide
+                  title="Western / Progressive"
+                  tone="text-blue-300"
+                  text={summarizeBloc(analysis.sourceAnalyses.filter(sa => sa.biasColor === 'left'))}
+                />
+                <QuickSide
+                  title="Center / Wire"
+                  tone="text-gray-300"
+                  text={summarizeBloc(analysis.sourceAnalyses.filter(sa => sa.biasColor === 'center'))}
+                />
+                <QuickSide
+                  title="Right / Nationalist"
+                  tone="text-red-300"
+                  text={summarizeBloc(analysis.sourceAnalyses.filter(sa => sa.biasColor === 'right'))}
+                />
+                <QuickSide
+                  title="State / Gulf / OSINT"
+                  tone="text-purple-300"
+                  text={summarizeBloc(
+                    analysis.sourceAnalyses.filter(sa =>
+                      sa.biasColor === 'state' || sa.biasColor === 'gulf' || sa.biasColor === 'osint'
+                    )
+                  )}
+                />
+              </div>
+            </Section>
+
             {/* Shared facts */}
             {analysis.sharedFacts.length > 0 && (
               <Section title="What All Sources Agree On" icon="✓" color="text-green-400">
