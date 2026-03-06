@@ -92,7 +92,7 @@ const CATEGORY_ALIASES: Partial<Record<EventCategory | 'all', EventCategory[]>> 
 
 export function FeedPanel({ onRefresh, defaultGrid }: { onRefresh?: () => void; defaultGrid?: boolean }) {
   const { state, dispatch } = useApp();
-  const { clusters, loading, settings, locationFilter } = state;
+  const { clusters, loading, settings, locationFilter, activePanel } = state;
   const [filter, setFilter] = useState<EventCategory | 'all'>('all');
   const [sourceFilter, setSourceFilter] = useState<SourceFilter>('all');
   const [viewMode, setViewMode] = useState<ViewMode>(defaultGrid ? 'grid' : 'list');
@@ -494,8 +494,8 @@ export function FeedPanel({ onRefresh, defaultGrid }: { onRefresh?: () => void; 
           </button>
         </div>
 
-        {/* Grid density +/- (only in grid mode) */}
-        {viewMode === 'grid' && (
+        {/* Grid density +/- (only in grid mode, not in map mode) */}
+        {viewMode === 'grid' && activePanel !== 'map' && (
           <div className="flex items-center border border-border/60 rounded overflow-hidden">
             <button
               onClick={() => setGridCols(c => Math.max(2, c - 1))}
