@@ -88,6 +88,12 @@
   padding: 4px 8px !important;
 }
 
+/* ── Breaking news ticker scroll ─────────────────────────────── */
+@keyframes ticker {
+  0%   { transform: translateX(0); }
+  100% { transform: translateX(-50%); }
+}
+
 /* ── Cluster marker pulse for critical events ─────────────────── */
 @keyframes pos-pulse {
   0%, 100% { box-shadow: 0 0 4px #ef444480; }

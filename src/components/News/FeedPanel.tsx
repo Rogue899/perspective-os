@@ -382,8 +382,40 @@ export function FeedPanel({ onRefresh, defaultGrid }: { onRefresh?: () => void; 
   const activeCategory = CATEGORIES.find(c => c.id === filter);
   const isGdeltEnriched = activeCategory?.gdelt && gdeltCount > 0;
 
+  // Rolling "Just now" strip — stories published in the last 30 min
+  const breakingClusters = clusters
+    .filter(c => Date.now() - new Date(c.articles[0]?.publishedAt ?? 0).getTime() < 30 * 60 * 1000)
+    .slice(0, 12);
+
   return (
     <div className="flex flex-col h-full">
+      {/* Rolling breaking strip — visible only in grid/feed mode, only when there are recent items */}
+      {defaultGrid && breakingClusters.length > 0 && (
+        <div className="shrink-0 border-b border-red-500/30 bg-red-500/5 overflow-hidden relative flex items-center h-7">
+          <div className="shrink-0 flex items-center gap-1 px-2 border-r border-red-500/30 h-full bg-red-500/10 z-10">
+            <Radio size={9} className="text-red-400 animate-pulse" />
+            <span className="text-[9px] font-mono font-bold text-red-400 uppercase tracking-widest">Breaking</span>
+          </div>
+          <div className="flex-1 overflow-hidden">
+            <div
+              className="flex gap-6 text-[10px] font-mono text-white/80 whitespace-nowrap animate-[scroll_40s_linear_infinite]"
+              style={{ animation: `ticker ${Math.max(20, breakingClusters.length * 8)}s linear infinite` }}
+            >
+              {[...breakingClusters, ...breakingClusters].map((c, i) => (
+                <button
+                  key={`${c.id}-${i}`}
+                  onClick={() => dispatch({ type: 'SELECT_CLUSTER', payload: c })}
+                  className="hover:text-accent transition-colors shrink-0"
+                >
+                  <span className="text-red-400 mr-1">●</span>
+                  {c.headline.length > 80 ? c.headline.slice(0, 77) + '…' : c.headline}
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Map→Feed location filter banner */}
       {locationFilter && (
         <div className="px-3 py-1.5 bg-accent/10 border-b border-accent/30 flex items-center justify-between shrink-0">
@@ -473,8 +505,8 @@ export function FeedPanel({ onRefresh, defaultGrid }: { onRefresh?: () => void; 
             >−</button>
             <span className="px-1 text-[10px] font-mono text-dim">{gridCols}</span>
             <button
-              onClick={() => setGridCols(c => Math.min(4, c + 1))}
-              disabled={gridCols >= 4}
+              onClick={() => setGridCols(c => Math.min(8, c + 1))}
+              disabled={gridCols >= 8}
               title="More columns"
               className="px-1.5 py-1 text-[10px] font-mono text-dim hover:text-white hover:bg-white/5 disabled:opacity-30 transition-colors"
             >+</button>
