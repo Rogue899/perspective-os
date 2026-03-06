@@ -186,6 +186,7 @@ export function PerspectivePanel() {
       return next;
     });
   const [copied, setCopied] = useState(false);
+  const [copiedQuestionIdx, setCopiedQuestionIdx] = useState<number | null>(null);
   const [showOpinions, setShowOpinions] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
   const [polyPredictions, setPolyPredictions] = useState<Array<{ question: string; probability: number; url: string }>>([]);
@@ -488,6 +489,15 @@ export function PerspectivePanel() {
     }
   };
 
+  const copyQuestion = useCallback((question: string, idx: number) => {
+    navigator.clipboard.writeText(question).then(() => {
+      setCopiedQuestionIdx(idx);
+      setTimeout(() => setCopiedQuestionIdx(prev => (prev === idx ? null : prev)), 1500);
+    });
+  }, []);
+
+  const groundNewsUrl = `https://ground.news/search?query=${encodeURIComponent(selectedCluster.headline)}`;
+
   return (
     <div className="absolute inset-y-0 right-0 w-full sm:w-[520px] bg-surface border-l border-border z-40 flex flex-col shadow-2xl">
       {/* Opinion Panel overlay (z-50, same right edge) */}
@@ -549,6 +559,23 @@ export function PerspectivePanel() {
               );
             })}
           </div>
+          <div className="flex flex-wrap gap-1 mb-2.5">
+            {([
+              { key: 'left', label: 'Left' },
+              { key: 'center', label: 'Center' },
+              { key: 'right', label: 'Right' },
+              { key: 'state', label: 'State' },
+              { key: 'gulf', label: 'Gulf' },
+              { key: 'osint', label: 'OSINT' },
+            ] as const).map(item => (
+              <span
+                key={item.key}
+                className={`text-[8px] font-mono px-1.5 py-0.5 rounded border ${getBiasBgClass(item.key)} ${getBiasTextClass(item.key)}`}
+              >
+                {item.label}
+              </span>
+            ))}
+          </div>
           {/* Actions row */}
           <div className="flex items-center gap-2 flex-wrap">
             <button
@@ -567,6 +594,15 @@ export function PerspectivePanel() {
               <BookOpen size={9} />
               History
             </button>
+            <a
+              href={groundNewsUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              title="Open this topic in Ground News"
+              className="inline-flex items-center gap-1 px-2 py-1 text-[10px] font-mono rounded border border-border text-dim hover:text-white hover:border-accent transition-colors"
+            >
+              Ground <ExternalLink size={9} />
+            </a>
           </div>
         </div>
 
@@ -971,7 +1007,14 @@ export function PerspectivePanel() {
                   {analysis.socraticQuestions.map((q, i) => (
                     <div key={i} className="flex gap-2 p-2.5 bg-accent/5 border border-accent/20 rounded">
                       <HelpCircle size={12} className="text-accent shrink-0 mt-0.5" />
-                      <p className="text-xs text-white/80 italic leading-relaxed">{q}</p>
+                      <p className="text-xs text-white/80 italic leading-relaxed flex-1">{q}</p>
+                      <button
+                        onClick={() => copyQuestion(q, i)}
+                        title="Copy question"
+                        className="text-dim hover:text-white transition-colors"
+                      >
+                        {copiedQuestionIdx === i ? <Check size={11} className="text-green-400" /> : <Copy size={11} />}
+                      </button>
                     </div>
                   ))}
                 </div>
