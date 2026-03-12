@@ -1,10 +1,11 @@
 /**
  * Finance Panel — news-driven investment signal analysis
  *
- * Data sources (all free, no API key required):
- * - Yahoo Finance: indices, commodities, forex via /api/finance
+ * Data sources:
+ * - Yahoo Finance: indices, commodities via /api/finance
  * - CoinGecko: crypto prices
  * - Polymarket: geopolitical prediction markets
+ * - MarketStack: EOD equities + forex (100 req/mo free — session-cached)
  * - Gemini Flash: news→sector impact analysis
  *
  * DISCLAIMER: AI analysis only. NOT financial advice.
@@ -53,6 +54,23 @@ interface SectorSignal {
 }
 
 type PricePt = { t: string; v: number };
+
+interface EodEntry {
+  symbol: string;
+  open: number;
+  high: number;
+  low: number;
+  close: number;
+  volume: number;
+  date: string;
+  exchange: string;
+}
+
+// Key equity watchlist — sectors relevant to geopolitical signals
+const EOD_SYMBOLS = 'AAPL,MSFT,NVDA,GOOGL,LMT,RTX,XOM,CVX,JPM,GS';
+const SESSION_KEY_EOD = 'pos:eod:v1';
+const SESSION_KEY_EOD_TS = 'pos:eod:ts';
+const EOD_TTL_MS = 6 * 60 * 60 * 1000; // 6h — EOD data doesn't change intraday
 
 function Sparkline({ data, up }: { data: PricePt[]; up: boolean | null }) {
   if (!data || data.length < 2) return <div className="h-8" />;
@@ -115,6 +133,11 @@ export function FinancePanel() {
   const [aiLoading, setAiLoading] = useState(false);
   const [tab, setTab]             = useState<'markets' | 'signals' | 'predictions' | 'charts'>('markets');
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
+  const [eodData, setEodData] = useState<EodEntry[]>([]);
+  const [eodLoading, setEodLoading] = useState(false);
+  const [fredIndicators, setFredIndicators] = useState<Array<{
+    id: string; label: string; latest: number | null; date: string; change: number | null;
+  }>>([]);
 
   const fetchMarketData = useCallback(async () => {
     setLoading(true);
@@ -146,6 +169,52 @@ export function FinancePanel() {
     } finally {
       setLoading(false);
     }
+  }, []);
+
+  // Fetch MarketStack EOD — session-cached to protect 100 req/mo free limit
+  const fetchEod = useCallback(async () => {
+    try {
+      const cachedTs = sessionStorage.getItem(SESSION_KEY_EOD_TS);
+      const cachedData = sessionStorage.getItem(SESSION_KEY_EOD);
+      if (cachedTs && cachedData && Date.now() - Number(cachedTs) < EOD_TTL_MS) {
+        setEodData(JSON.parse(cachedData));
+        return;
+      }
+    } catch { /* sessionStorage unavailable */ }
+
+    setEodLoading(true);
+    try {
+      const res = await fetch(`/api/finance?type=eod&symbols=${EOD_SYMBOLS}&limit=2`);
+      if (!res.ok) throw new Error(`EOD ${res.status}`);
+      const data = await res.json();
+      const entries: EodEntry[] = data.eod ?? [];
+      // Keep only most recent entry per symbol
+      const bySymbol = new Map<string, EodEntry>();
+      for (const e of entries) {
+        if (!bySymbol.has(e.symbol)) bySymbol.set(e.symbol, e);
+      }
+      const latest = Array.from(bySymbol.values());
+      setEodData(latest);
+      try {
+        sessionStorage.setItem(SESSION_KEY_EOD, JSON.stringify(latest));
+        sessionStorage.setItem(SESSION_KEY_EOD_TS, String(Date.now()));
+      } catch { /* noop */ }
+    } catch (e) {
+      console.warn('[Finance] MarketStack EOD failed:', e);
+    } finally {
+      setEodLoading(false);
+    }
+  }, []);
+
+  // Fetch EOD once on mount
+  useEffect(() => { fetchEod(); }, [fetchEod]);
+
+  // Fetch FRED economic indicators once on mount (cached 6h server-side)
+  useEffect(() => {
+    fetch('/api/finance?type=fred_all')
+      .then(r => r.json())
+      .then(data => setFredIndicators(data.indicators ?? []))
+      .catch(() => {});
   }, []);
 
   const generateSignals = useCallback(async () => {
@@ -305,6 +374,135 @@ IMPORTANT: End with a disclaimer that this is AI analysis only, not financial ad
                 ))}
               </div>
             </div>
+
+            {/* Equities — MarketStack EOD */}
+            <div>
+              <div className="flex items-center justify-between mb-2">
+                <h3 className="text-[10px] font-mono text-dim uppercase tracking-widest">
+                  Equities
+                  <span className="ml-1.5 text-[8px] normal-case font-normal text-dim/50">via MarketStack · EOD</span>
+                </h3>
+                <button
+                  onClick={fetchEod}
+                  disabled={eodLoading}
+                  className="text-[9px] font-mono text-dim hover:text-accent transition-colors disabled:opacity-40"
+                >
+                  {eodLoading ? 'Loading…' : 'Refresh'}
+                </button>
+              </div>
+              {eodLoading && eodData.length === 0 ? (
+                <div className="text-[10px] text-dim font-mono">Fetching EOD data…</div>
+              ) : eodData.length === 0 ? (
+                <div className="text-[10px] text-dim font-mono">No data — check MARKETSTACK_API_KEY in .env</div>
+              ) : (
+                <div className="grid grid-cols-2 lg:grid-cols-3 gap-2">
+                  {eodData.map(e => {
+                    const chg = e.open > 0 ? ((e.close - e.open) / e.open * 100) : null;
+                    const up = chg !== null ? chg >= 0 : null;
+                    const sectorLabel: Record<string, string> = {
+                      AAPL: 'Tech', MSFT: 'Tech', NVDA: 'Tech', GOOGL: 'Tech',
+                      LMT: 'Defense', RTX: 'Defense', NOC: 'Defense',
+                      XOM: 'Energy', CVX: 'Energy',
+                      JPM: 'Finance', GS: 'Finance',
+                    };
+                    return (
+                      <div key={e.symbol} className="bg-surface border border-border rounded p-2 flex flex-col gap-1">
+                        <div className="flex items-center justify-between">
+                          <span className="text-[10px] font-mono text-white font-semibold">{e.symbol}</span>
+                          {sectorLabel[e.symbol] && (
+                            <span className="text-[8px] font-mono text-dim/60">{sectorLabel[e.symbol]}</span>
+                          )}
+                        </div>
+                        <div className="text-[11px] font-mono text-white">
+                          ${e.close.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        </div>
+                        {chg !== null && (
+                          <div className={`text-[10px] font-mono flex items-center gap-0.5 ${up ? 'text-green-400' : 'text-red-400'}`}>
+                            <ChangeArrow change={chg} />
+                            {chg > 0 ? '+' : ''}{chg.toFixed(2)}%
+                          </div>
+                        )}
+                        <div className="text-[8px] font-mono text-dim/50 mt-0.5">
+                          H {e.high.toFixed(2)} · L {e.low.toFixed(2)}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+
+            {/* Metals & Commodities — pulled from Yahoo Finance DEFAULT_SYMBOLS */}
+            <div>
+              <h3 className="text-[10px] font-mono text-dim mb-2 uppercase tracking-widest">
+                Metals & Commodities
+                <span className="ml-1.5 text-[8px] normal-case font-normal text-dim/50">via Yahoo Finance</span>
+              </h3>
+              {(() => {
+                const metalSymbols = ['GC=F', 'SI=F', 'PL=F', 'HG=F', 'CL=F', 'BZ=F', 'NG=F', 'ZW=F'];
+                const metalLabels: Record<string, string> = {
+                  'GC=F': 'Gold', 'SI=F': 'Silver', 'PL=F': 'Platinum',
+                  'HG=F': 'Copper', 'CL=F': 'WTI Oil', 'BZ=F': 'Brent',
+                  'NG=F': 'Nat Gas', 'ZW=F': 'Wheat',
+                };
+                const metalQuotes = quotes.filter(q => metalSymbols.includes(q.symbol));
+                if (loading && metalQuotes.length === 0) return <div className="text-[10px] text-dim font-mono">Loading…</div>;
+                return (
+                  <div className="grid grid-cols-2 lg:grid-cols-4 gap-2">
+                    {metalQuotes.map(q => {
+                      const up = q.change !== null ? q.change > 0 : null;
+                      return (
+                        <div key={q.symbol} className="bg-surface border border-border rounded p-2 flex flex-col gap-1">
+                          <div className="text-[9px] font-mono text-dim">{metalLabels[q.symbol] ?? q.symbol}</div>
+                          <div className="text-[11px] font-mono text-white font-semibold">
+                            {q.price != null ? `$${q.price.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : '—'}
+                          </div>
+                          {q.change !== null && (
+                            <div className={`text-[10px] font-mono flex items-center gap-0.5 ${up ? 'text-green-400' : 'text-red-400'}`}>
+                              <ChangeArrow change={q.change} />
+                              {q.change > 0 ? '+' : ''}{q.change.toFixed(2)}%
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                );
+              })()}
+            </div>
+
+            {/* FRED Economic Indicators — Federal Reserve data, no key needed */}
+            {fredIndicators.length > 0 && (
+              <div>
+                <h3 className="text-[10px] font-mono text-dim mb-2 uppercase tracking-widest">
+                  Economic Indicators
+                  <span className="ml-1.5 text-[8px] normal-case font-normal text-dim/50">via FRED · St. Louis Fed</span>
+                </h3>
+                <div className="grid grid-cols-2 lg:grid-cols-3 gap-2">
+                  {fredIndicators.map(ind => {
+                    const up = ind.change !== null ? ind.change > 0 : null;
+                    const isRate = ind.id === 'FEDFUNDS' || ind.id === 'DGS10' || ind.id === 'T10YIE';
+                    const fmt = (v: number | null) => v == null ? '—'
+                      : isRate ? `${v.toFixed(2)}%`
+                      : v > 1000 ? v.toLocaleString('en-US', { maximumFractionDigits: 0 })
+                      : v.toFixed(2);
+                    return (
+                      <div key={ind.id} className="bg-surface border border-border rounded p-2 flex flex-col gap-1">
+                        <div className="text-[9px] font-mono text-dim leading-tight">{ind.label}</div>
+                        <div className="text-[11px] font-mono text-white font-semibold">{fmt(ind.latest)}</div>
+                        {ind.change !== null && (
+                          <div className={`text-[10px] font-mono flex items-center gap-0.5 ${up ? 'text-green-400' : 'text-red-400'}`}>
+                            <ChangeArrow change={ind.change} />
+                            {ind.change > 0 ? '+' : ''}{ind.change.toFixed(2)}%
+                          </div>
+                        )}
+                        <div className="text-[8px] font-mono text-dim/50">{ind.date}</div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
           </div>
         )}
 

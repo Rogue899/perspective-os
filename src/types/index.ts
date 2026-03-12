@@ -161,6 +161,15 @@ export interface AppSettings {
   enableConflictLayer: boolean;
   enableFlightLayer: boolean;
   aiProvider: AIProvider;
+  socialAuth: {
+    x: boolean;
+    reddit: boolean;
+    meta: boolean;
+    tiktok: boolean;
+    scopes: string[];
+    tokenVersion: number;
+    updatedAt?: string;
+  };
 }
 
 export interface DataSourceStatus {

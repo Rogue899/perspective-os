@@ -23,6 +23,10 @@ const ALLOWED_DOMAINS = [
   'www.channelnewsasia.com', 'www.al-monitor.com', 'feeds.npr.org',
   'nitter.net', 'www.reddit.com', 'www.mtv.com.lb',
   'www.whitehouse.gov', 'www.gov.uk',
+  'www.euronews.com', 'www.the961.com',
+  'www.rfi.fr', 'www.spiegel.de', 'feeds.skynews.com', 'www.ansa.it',
+  'kyivindependent.com', 'notesfrompoland.com', 'www.politico.eu', 'euobserver.com',
+  'mg.co.za', 'allafrica.com', 'rsshub.app', 'rsshub.rssforever.com', 'ground.news',
 ];
 
 async function handleRssProxy(req, res, params) {
@@ -236,6 +240,56 @@ async function handleEonet(_req, res) {
   }
 }
 
+async function handleNewsData(_req, res, params) {
+  const apiKey = process.env.NEWSDATA_API_KEY || process.env.VITE_NEWSDATA_API_KEY;
+  if (!apiKey) {
+    res.writeHead(200, { ...cors(), 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ articles: [], disabled: true, reason: 'NEWSDATA_API_KEY missing' }));
+    return;
+  }
+
+  const topic = (params.get('topic') || 'world geopolitics').trim();
+  const language = (params.get('language') || 'en').trim();
+  const size = Math.min(Math.max(Number(params.get('size') || '20'), 1), 50);
+
+  const upstream = new URL('https://newsdata.io/api/1/news');
+  upstream.searchParams.set('apikey', apiKey);
+  upstream.searchParams.set('language', language);
+  upstream.searchParams.set('size', String(size));
+  upstream.searchParams.set('q', topic);
+
+  try {
+    const r = await fetch(upstream.toString(), {
+      headers: { 'User-Agent': 'PerspectiveOS/1.0 NewsData Adapter' },
+      signal: AbortSignal.timeout(10000),
+    });
+
+    if (!r.ok) {
+      const body = await r.text();
+      res.writeHead(502, { ...cors(), 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ articles: [], error: `NewsData upstream ${r.status}`, detail: body.slice(0, 400) }));
+      return;
+    }
+
+    const data = await r.json();
+    const items = Array.isArray(data?.results) ? data.results : [];
+    const articles = items.map((item) => ({
+      title: item?.title ?? '',
+      description: item?.description ?? item?.content ?? '',
+      url: item?.link ?? '',
+      sourceName: item?.source_name ?? item?.source_id ?? 'NewsData',
+      sourceId: item?.source_id ?? 'newsdata',
+      publishedAt: item?.pubDate ?? item?.pubDateTZ ?? new Date().toISOString(),
+    })).filter(a => a.title && a.url);
+
+    res.writeHead(200, { ...cors(), 'Content-Type': 'application/json', 'Cache-Control': 'public, max-age=120' });
+    res.end(JSON.stringify({ articles, disabled: false }));
+  } catch (err) {
+    res.writeHead(502, { ...cors(), 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ articles: [], error: err.message }));
+  }
+}
+
 function cors() {
   return {
     'Access-Control-Allow-Origin':  '*',
@@ -269,6 +323,7 @@ const server = http.createServer(async (req, res) => {
   if (url.pathname === '/api/telegram-proxy') return handleTelegram(req, res, params);
   if (url.pathname === '/api/embed')          return handleEmbed(req, res);
   if (url.pathname === '/api/eonet')          return handleEonet(req, res);
+  if (url.pathname === '/api/newsdata')       return handleNewsData(req, res, params);
 
   res.writeHead(404, cors());
   res.end(JSON.stringify({ error: 'Not found: ' + url.pathname }));

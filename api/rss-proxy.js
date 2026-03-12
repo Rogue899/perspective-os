@@ -43,6 +43,9 @@ const ALLOWED_DOMAINS = [
   'euobserver.com',        // EUobserver
   'mg.co.za',              // Mail & Guardian (South Africa)
   'allafrica.com',         // AllAfrica aggregator
+  'www.euronews.com',      // Euronews fallback RSS domain
+  'ground.news',           // Ground News blindspot feed
+  'www.the961.com',        // The961 Lebanon
   'www.whitehouse.gov',    // U.S. White House
   'www.gov.uk',            // UK government feeds
   'rsshub.app',            // RSSHub public instance

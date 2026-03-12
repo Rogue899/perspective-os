@@ -1,11 +1,11 @@
-import { useState, useCallback, useEffect, type ReactNode } from 'react';
+import { useState, useCallback, useEffect, useRef, type ReactNode } from 'react';
 import { OpinionPanel } from './OpinionPanel';
 import { HistoricalPanel } from './HistoricalPanel';
 import type { StoryCluster, PerspectiveAnalysis, SourcePerspective } from '../../types';
 import { getSourceById, getBiasTextClass, getBiasBgClass, getSourceTypeLabel } from '../../config/sources';
 import { useApp } from '../../context/AppContext';
 import { analyzePerspectives } from '../../services/ai';
-import { X, Sparkles, ChevronDown, ChevronUp, ExternalLink, HelpCircle, Eye, AlertCircle, PlayCircle, Copy, Check, BookOpen } from 'lucide-react';
+import { X, Sparkles, ChevronDown, ChevronUp, ExternalLink, HelpCircle, Eye, AlertCircle, PlayCircle, Copy, Check, BookOpen, Send, MessageSquare, RotateCcw } from 'lucide-react';
 import type { BiasColor } from '../../types';
 // ── Shared helpers ────────────────────────────────────────────────────────────
 
@@ -111,7 +111,7 @@ function toMediaEmbed(rawUrl: string): MediaEmbed | null {
       return {
         platform: 'x',
         embedUrl: `https://twitframe.com/show?url=${encodeURIComponent(xUrl)}`,
-        originalUrl: xUrl,
+        originalUrl: rawUrl,
       };
     }
 
@@ -166,9 +166,11 @@ function toMediaEmbed(rawUrl: string): MediaEmbed | null {
   return null;
 }
 
+type ChatMessage = { role: 'user' | 'ai'; text: string };
+
 export function PerspectivePanel() {
   const { state, dispatch } = useApp();
-  const { selectedCluster } = state;
+  const { selectedCluster, settings } = state;
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [expandedSource, setExpandedSource] = useState<string | null>(null);
@@ -177,6 +179,10 @@ export function PerspectivePanel() {
   const [collapsedSections, setCollapsedSections] = useState<Set<string>>(new Set());
   const [socialPosts, setSocialPosts] = useState<{ reddit: SocialPost[]; x: SocialPost[] }>({ reddit: [], x: [] });
   const [loadingSocial, setLoadingSocial] = useState(false);
+  const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
+  const [chatInput, setChatInput] = useState('');
+  const [chatLoading, setChatLoading] = useState(false);
+  const chatEndRef = useRef<HTMLDivElement>(null);
   const [activeSocialTab, setActiveSocialTab] = useState<'reddit' | 'x' | 'ig' | 'fb'>('reddit');
 
   const toggleSection = (id: string) =>
@@ -243,54 +249,80 @@ export function PerspectivePanel() {
     };
 
     const fetchX = async (): Promise<SocialPost[]> => {
-      const candidates = [
+      const parseFeed = (xml: string, source: 'nitter' | 'x'): SocialPost[] => {
+        const doc = new DOMParser().parseFromString(xml, 'text/xml');
+        const rssItems = Array.from(doc.querySelectorAll('item'));
+        const atomItems = Array.from(doc.querySelectorAll('entry'));
+        const entries = (rssItems.length > 0 ? rssItems : atomItems).slice(0, 8);
+
+        return entries.map(entry => {
+          const linkNode = entry.querySelector('link');
+          const rawUrl =
+            linkNode?.getAttribute('href')?.trim() ||
+            linkNode?.textContent?.trim() ||
+            entry.querySelector('id')?.textContent?.trim() ||
+            '';
+
+          const nitterUrl = rawUrl.replace(/https?:\/\/x\.com/i, 'https://nitter.net').replace(/https?:\/\/twitter\.com/i, 'https://nitter.net');
+          const xUrl = rawUrl.replace(/https?:\/\/nitter\.[^/]+/i, 'https://x.com');
+
+          return {
+            title: entry.querySelector('title')?.textContent?.trim() ?? '',
+            url: source === 'nitter' ? nitterUrl : xUrl,
+            author:
+              entry.querySelector('dc\\:creator')?.textContent?.trim() ||
+              entry.querySelector('creator')?.textContent?.trim() ||
+              entry.querySelector('author > name')?.textContent?.trim() ||
+              (source === 'nitter' ? '@nitter' : '@x'),
+            ago: formatAgo(
+              entry.querySelector('pubDate')?.textContent ||
+              entry.querySelector('updated')?.textContent ||
+              ''
+            ),
+          };
+        }).filter(p => p.title && p.url);
+      };
+
+      const nitterCandidates = [
         `https://nitter.net/search/rss?f=tweets&q=${q}`,
         `https://nitter.net/search/rss?q=${q}`,
       ];
 
-      for (const url of candidates) {
+      const collected: SocialPost[] = [];
+
+      for (const url of nitterCandidates) {
         try {
           const res = await fetch(`/api/rss-proxy?url=${encodeURIComponent(url)}`, { signal: AbortSignal.timeout(7000) });
           if (!res.ok) continue;
-
           const xml = await res.text();
-          const doc = new DOMParser().parseFromString(xml, 'text/xml');
-
-          const rssItems = Array.from(doc.querySelectorAll('item'));
-          const atomItems = Array.from(doc.querySelectorAll('entry'));
-          const entries = (rssItems.length > 0 ? rssItems : atomItems).slice(0, 6);
-
-          const posts = entries.map(entry => {
-            const linkNode = entry.querySelector('link');
-            const rawUrl =
-              linkNode?.getAttribute('href')?.trim() ||
-              linkNode?.textContent?.trim() ||
-              entry.querySelector('id')?.textContent?.trim() ||
-              '';
-            const xUrl = rawUrl.replace(/https?:\/\/nitter\.[^/]+/i, 'https://x.com');
-            return {
-              title: entry.querySelector('title')?.textContent?.trim() ?? '',
-              url: xUrl,
-              author:
-                entry.querySelector('dc\\:creator')?.textContent?.trim() ||
-                entry.querySelector('creator')?.textContent?.trim() ||
-                entry.querySelector('author > name')?.textContent?.trim() ||
-                '@unknown',
-              ago: formatAgo(
-                entry.querySelector('pubDate')?.textContent ||
-                entry.querySelector('updated')?.textContent ||
-                ''
-              ),
-            };
-          }).filter(p => p.title && p.url);
-
-          if (posts.length > 0) return posts;
+          const posts = parseFeed(xml, 'nitter');
+          if (posts.length > 0) {
+            collected.push(...posts);
+            break;
+          }
         } catch {
           /* try next candidate */
         }
       }
 
-      return [];
+      // Fallback/augmentation: normal X links via Google News RSS (works without X account)
+      try {
+        const xNewsRss = `https://news.google.com/rss/search?q=site:x.com+${q}&hl=en-US&gl=US&ceid=US:en`;
+        const res = await fetch(`/api/rss-proxy?url=${encodeURIComponent(xNewsRss)}`, { signal: AbortSignal.timeout(7000) });
+        if (res.ok) {
+          const xml = await res.text();
+          collected.push(...parseFeed(xml, 'x'));
+        }
+      } catch {
+        /* keep collected posts */
+      }
+
+      const dedup = Array.from(new Map(
+        collected
+          .map(p => [p.url.replace(/https?:\/\/nitter\.[^/]+/i, 'https://x.com'), p] as const)
+      ).values());
+
+      return dedup.slice(0, 8);
     };
 
     Promise.allSettled([fetchReddit(), fetchX()])
@@ -482,6 +514,20 @@ export function PerspectivePanel() {
   const xInlinePosts = mapInlineToPosts('x');
   const igInlinePosts = mapInlineToPosts('ig');
   const fbInlinePosts = mapInlineToPosts('meta');
+  const xFetchedEmbeds = socialPosts.x
+    .filter(post => /^https?:\/\/(x\.com|twitter\.com)\//i.test(post.url))
+    .slice(0, 2)
+    .map(post => {
+    const embedTarget = post.url;
+    return {
+      url: post.url,
+      embedUrl: `https://twitframe.com/show?url=${encodeURIComponent(embedTarget)}`,
+    };
+  });
+
+  const xInlineEmbedsOfficial = inlineSocialEmbeds
+    .filter(e => e.platform === 'x' && /^https?:\/\/(x\.com|twitter\.com)\//i.test(e.originalUrl))
+    .map(e => ({ url: e.originalUrl, embedUrl: e.embedUrl }));
 
   const sevMeta = MTS_SEVERITY[selectedCluster.severity] ?? MTS_SEVERITY.info;
   const mtsCategory = MTS_CATEGORY_LABEL[selectedCluster.category] ?? 'General';
@@ -526,6 +572,46 @@ export function PerspectivePanel() {
       setTimeout(() => setCopiedQuestionIdx(prev => (prev === idx ? null : prev)), 1500);
     });
   }, []);
+
+  // Clear chat when story changes
+  useEffect(() => {
+    setChatMessages([]);
+    setChatInput('');
+  }, [selectedCluster?.id]);
+
+  // Scroll chat to bottom on new messages
+  useEffect(() => {
+    chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [chatMessages]);
+
+  const sendChat = useCallback(async () => {
+    const question = chatInput.trim();
+    if (!question || chatLoading || !selectedCluster) return;
+    setChatInput('');
+    setChatMessages(prev => [...prev, { role: 'user', text: question }]);
+    setChatLoading(true);
+    try {
+      const context = [
+        `Story: ${selectedCluster.headline}`,
+        `Sources: ${selectedCluster.sourceIds.join(', ')}`,
+        `Category: ${selectedCluster.category} | Severity: ${selectedCluster.severity}`,
+        selectedCluster.articles.slice(0, 3).map(a => `[${a.sourceName}] ${a.title}`).join('\n'),
+      ].join('\n');
+      const prompt = `You are a media analysis assistant. Given the following news story context, answer the user's question concisely and factually. Do not repeat the context back — just answer directly.\n\nContext:\n${context}\n\nUser question: ${question}\n\nAnswer in 2-4 sentences. Be direct.`;
+      const res = await fetch('/api/ai', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ prompt, tier: 'flash-lite', maxTokens: 400 }),
+      });
+      const data = await res.json();
+      const answer = (data?.text ?? '').replace(/^```[a-z]*\n?/i, '').replace(/\n?```$/i, '').trim();
+      setChatMessages(prev => [...prev, { role: 'ai', text: answer || 'No response from AI.' }]);
+    } catch {
+      setChatMessages(prev => [...prev, { role: 'ai', text: 'Could not reach AI — check your connection.' }]);
+    } finally {
+      setChatLoading(false);
+    }
+  }, [chatInput, chatLoading, selectedCluster]);
 
   const groundNewsUrl = `https://ground.news/search?query=${encodeURIComponent(selectedCluster.headline)}`;
 
@@ -765,6 +851,11 @@ export function PerspectivePanel() {
               );
             })}
           </div>
+          <div className="pb-2 text-[9px] font-mono text-dim flex gap-2 flex-wrap">
+            <span className={settings.socialAuth.reddit ? 'text-green-300' : 'text-dim'}>Reddit {settings.socialAuth.reddit ? 'connected' : 'public-only'}</span>
+            <span className={settings.socialAuth.x ? 'text-green-300' : 'text-dim'}>X {settings.socialAuth.x ? 'connected' : 'public-only'}</span>
+            <span className={settings.socialAuth.meta ? 'text-green-300' : 'text-dim'}>Meta {settings.socialAuth.meta ? 'connected' : 'public-only'}</span>
+          </div>
 
           {/* Content */}
           {activeSocialTab === 'reddit' && (
@@ -794,6 +885,18 @@ export function PerspectivePanel() {
                     <p className="text-[11px] text-white/80 leading-relaxed line-clamp-3">{post.title}</p>
                   </a>
                 ))}
+                {inlineSocialEmbeds.filter(e => e.platform === 'reddit').slice(0, 2).map((embed, i) => (
+                  <div key={`reddit-embed-${i}`} className="rounded border border-border overflow-hidden bg-black/30">
+                    <div className="px-2 py-1 border-b border-border text-[10px] font-mono text-orange-400/70">Embedded view</div>
+                    <iframe
+                      src={embed.embedUrl}
+                      className="w-full h-44"
+                      loading="lazy"
+                      allow="encrypted-media"
+                      sandbox="allow-scripts allow-same-origin allow-popups"
+                    />
+                  </div>
+                ))}
               </div>
             ) : (
               <div className="space-y-2">
@@ -819,17 +922,40 @@ export function PerspectivePanel() {
                     <p className="text-[11px] text-white/80 leading-relaxed line-clamp-3">{post.title}</p>
                   </a>
                 ))}
+                {[...xFetchedEmbeds, ...xInlineEmbedsOfficial]
+                  .slice(0, 2)
+                  .map((embed, i) => (
+                    <div key={`x-embed-${i}`} className="rounded border border-border overflow-hidden bg-black/30">
+                      <div className="px-2 py-1 border-b border-border text-[10px] font-mono text-blue-400/70">Embedded view</div>
+                      <iframe
+                        src={embed.embedUrl}
+                        className="w-full h-44"
+                        loading="lazy"
+                        allow="encrypted-media"
+                        sandbox="allow-scripts allow-same-origin allow-popups"
+                      />
+                    </div>
+                  ))}
               </div>
             ) : (
               <div className="flex flex-col items-center gap-3 py-4 text-center">
-                <p className="text-[11px] text-dim font-mono leading-relaxed max-w-[240px]">No X posts found for this story.</p>
-                <a
-                  href={`https://x.com/search?q=${encodeURIComponent(selectedCluster.headline)}&src=typed_query&f=live`}
-                  target="_blank" rel="noopener noreferrer"
-                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded border border-blue-500/40 bg-blue-500/10 text-blue-400 text-[11px] font-mono hover:bg-blue-500/20 transition-colors"
-                >
-                  Open X search <ExternalLink size={10} />
-                </a>
+                <p className="text-[11px] text-dim font-mono leading-relaxed max-w-[280px]">No X posts found for this story yet. Nitter is primary (no account needed), with normal X as fallback.</p>
+                <div className="flex items-center gap-2 flex-wrap justify-center">
+                  <a
+                    href={`https://nitter.net/search?f=tweets&q=${encodeURIComponent(selectedCluster.headline)}`}
+                    target="_blank" rel="noopener noreferrer"
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded border border-cyan-500/40 bg-cyan-500/10 text-cyan-300 text-[11px] font-mono hover:bg-cyan-500/20 transition-colors"
+                  >
+                    Open Nitter <ExternalLink size={10} />
+                  </a>
+                  <a
+                    href={`https://x.com/search?q=${encodeURIComponent(selectedCluster.headline)}&src=typed_query&f=live`}
+                    target="_blank" rel="noopener noreferrer"
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded border border-blue-500/40 bg-blue-500/10 text-blue-400 text-[11px] font-mono hover:bg-blue-500/20 transition-colors"
+                  >
+                    Open X search <ExternalLink size={10} />
+                  </a>
+                </div>
               </div>
             )
           )}
@@ -867,6 +993,18 @@ export function PerspectivePanel() {
                     </div>
                     <p className="text-[11px] text-white/80 leading-relaxed line-clamp-3">{post.title}</p>
                   </a>
+                ))}
+                {inlineSocialEmbeds.filter(e => e.platform === 'meta').slice(0, 2).map((embed, i) => (
+                  <div key={`fb-embed-${i}`} className="rounded border border-border overflow-hidden bg-black/30">
+                    <div className="px-2 py-1 border-b border-border text-[10px] font-mono text-indigo-300/80">Embedded view</div>
+                    <iframe
+                      src={embed.embedUrl}
+                      className="w-full h-44"
+                      loading="lazy"
+                      allow="encrypted-media"
+                      sandbox="allow-scripts allow-same-origin allow-popups"
+                    />
+                  </div>
                 ))}
               </div>
             ) : (
@@ -938,16 +1076,29 @@ export function PerspectivePanel() {
 
         {/* CTA to run analysis */}
         {!analysis && !loading && (
-          <div className="px-4 py-6 flex flex-col items-center gap-3 text-center">
-            <div className="w-12 h-12 rounded-full bg-accent/10 border border-accent/20 flex items-center justify-center">
-              <Sparkles size={20} className="text-accent" />
+          <div className="px-4 py-6 flex flex-col items-center gap-4 text-center">
+            <div className="w-14 h-14 rounded-full bg-accent/10 border border-accent/20 flex items-center justify-center">
+              <Sparkles size={22} className="text-accent" />
             </div>
-            <div>
-              <p className="text-sm text-white font-medium mb-1">Run Perspective Analysis</p>
-              <p className="text-xs text-dim leading-relaxed">
-                AI will compare how each source frames this story, what they emphasize,
-                what they omit, and generate Socratic questions to challenge your assumptions.
+            <div className="space-y-1.5 max-w-xs">
+              <p className="text-sm text-white font-semibold">Cross-Source Analysis</p>
+              <p className="text-[11px] text-dim leading-relaxed">
+                AI compares how each of the <span className="text-white font-medium">{selectedCluster.sourceIds.length} sources</span> frames
+                this story — detecting bias, omissions, loaded language, and ideological framing differences.
               </p>
+            </div>
+            <div className="grid grid-cols-2 gap-2 w-full max-w-xs text-left">
+              {[
+                { icon: '◐', label: 'Source framing comparison' },
+                { icon: '👁', label: 'Shared blind spots' },
+                { icon: '⚡', label: 'Direct contradictions' },
+                { icon: '?', label: 'Socratic questions' },
+              ].map(f => (
+                <div key={f.label} className="flex items-center gap-1.5 p-1.5 rounded border border-border bg-surface/40">
+                  <span className="text-[10px] text-accent shrink-0">{f.icon}</span>
+                  <span className="text-[10px] font-mono text-dim leading-tight">{f.label}</span>
+                </div>
+              ))}
             </div>
             {error && (
               <div className="w-full flex items-start gap-2 p-3 bg-red-500/10 border border-red-500/30 rounded text-xs text-red-400">
@@ -958,23 +1109,12 @@ export function PerspectivePanel() {
             <button
               onClick={handleAnalyze}
               disabled={loading}
-              className="flex items-center gap-2 px-4 py-2 bg-accent text-black text-sm font-mono font-semibold rounded hover:bg-accent/90 transition-colors disabled:opacity-50"
+              className="flex items-center gap-2 px-5 py-2.5 bg-accent text-black text-sm font-mono font-semibold rounded-lg hover:bg-accent/90 active:scale-95 transition-all disabled:opacity-50 shadow-lg shadow-accent/20"
             >
-              {loading ? (
-                <>
-                  <Sparkles size={14} className="animate-pulse" />
-                  Analyzing...
-                </>
-              ) : (
-                <>
-                  <Sparkles size={14} />
-                  Analyze {selectedCluster.sourceIds.length} perspectives
-                </>
-              )}
+              <Sparkles size={14} />
+              Analyze {selectedCluster.sourceIds.length} perspectives
             </button>
-            <p className="text-[10px] text-dim font-mono">
-              Uses Gemini Flash → Groq fallback chain
-            </p>
+            <p className="text-[9px] text-dim/60 font-mono">Gemini Flash · Groq fallback · Results cached 1h</p>
           </div>
         )}
 
@@ -1092,9 +1232,109 @@ export function PerspectivePanel() {
               <span className="text-[10px] font-mono text-dim">
                 Fact confidence: {Math.round(analysis.confidenceOnFacts * 100)}%
               </span>
-              <span className="text-[10px] font-mono text-dim">
-                via {analysis.model} · {analysis.generatedAt.toLocaleTimeString()}
-              </span>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={handleAnalyze}
+                  title="Re-run analysis"
+                  className="text-dim hover:text-accent transition-colors"
+                >
+                  <RotateCcw size={11} />
+                </button>
+                <span className="text-[10px] font-mono text-dim">
+                  {analysis.model} · {analysis.generatedAt.toLocaleTimeString()}
+                </span>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* AI Follow-up Chat — available after analysis or standalone */}
+        {analysis && (
+          <div className="border-t border-border">
+            <div className="px-4 py-2.5 flex items-center gap-1.5">
+              <MessageSquare size={11} className="text-accent" />
+              <span className="text-[10px] font-mono text-white font-semibold">Ask AI about this story</span>
+              {chatMessages.length > 0 && (
+                <button
+                  onClick={() => setChatMessages([])}
+                  className="ml-auto text-[9px] font-mono text-dim hover:text-white flex items-center gap-1 transition-colors"
+                >
+                  <RotateCcw size={9} /> Clear
+                </button>
+              )}
+            </div>
+
+            {/* Chat history */}
+            {chatMessages.length > 0 && (
+              <div className="px-3 pb-2 space-y-2 max-h-60 overflow-y-auto">
+                {chatMessages.map((msg, i) => (
+                  <div key={i} className={`flex gap-2 ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+                    {msg.role === 'ai' && (
+                      <div className="w-5 h-5 rounded-full bg-accent/15 border border-accent/20 flex items-center justify-center shrink-0 mt-0.5">
+                        <Sparkles size={9} className="text-accent" />
+                      </div>
+                    )}
+                    <div className={`max-w-[85%] px-2.5 py-2 rounded-lg text-[11px] leading-relaxed font-mono ${
+                      msg.role === 'user'
+                        ? 'bg-accent/15 border border-accent/25 text-white'
+                        : 'bg-surface border border-border text-white/85'
+                    }`}>
+                      {msg.text}
+                    </div>
+                  </div>
+                ))}
+                {chatLoading && (
+                  <div className="flex gap-2 items-center">
+                    <div className="w-5 h-5 rounded-full bg-accent/15 border border-accent/20 flex items-center justify-center shrink-0">
+                      <Sparkles size={9} className="text-accent animate-pulse" />
+                    </div>
+                    <div className="flex gap-1 py-2 px-3 rounded-lg border border-border bg-surface">
+                      <span className="w-1 h-1 rounded-full bg-dim animate-bounce" style={{ animationDelay: '0ms' }} />
+                      <span className="w-1 h-1 rounded-full bg-dim animate-bounce" style={{ animationDelay: '150ms' }} />
+                      <span className="w-1 h-1 rounded-full bg-dim animate-bounce" style={{ animationDelay: '300ms' }} />
+                    </div>
+                  </div>
+                )}
+                <div ref={chatEndRef} />
+              </div>
+            )}
+
+            {/* Suggested questions when no chat yet */}
+            {chatMessages.length === 0 && (
+              <div className="px-3 pb-2 flex flex-wrap gap-1.5">
+                {[
+                  'What is each side not saying?',
+                  'Who benefits from this framing?',
+                  'What should I verify independently?',
+                ].map(q => (
+                  <button
+                    key={q}
+                    onClick={() => { setChatInput(q); }}
+                    className="text-[10px] font-mono px-2 py-1 rounded border border-border text-dim hover:text-white hover:border-accent/40 transition-colors"
+                  >
+                    {q}
+                  </button>
+                ))}
+              </div>
+            )}
+
+            {/* Input */}
+            <div className="px-3 pb-3 flex gap-2">
+              <input
+                value={chatInput}
+                onChange={e => setChatInput(e.target.value)}
+                onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendChat(); } }}
+                placeholder="Ask anything about this story..."
+                disabled={chatLoading}
+                className="flex-1 bg-bg border border-border rounded-lg px-3 py-2 text-[11px] font-mono text-white placeholder-dim/50 focus:outline-none focus:border-accent/50 transition-colors disabled:opacity-50"
+              />
+              <button
+                onClick={sendChat}
+                disabled={chatLoading || !chatInput.trim()}
+                className="flex items-center justify-center w-8 h-8 rounded-lg bg-accent/15 border border-accent/30 text-accent hover:bg-accent/25 transition-colors disabled:opacity-40 shrink-0"
+              >
+                <Send size={12} />
+              </button>
             </div>
           </div>
         )}

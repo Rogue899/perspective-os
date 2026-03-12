@@ -12,7 +12,7 @@
 import { useState, useMemo } from 'react';
 import { useApp } from '../../context/AppContext';
 import type { WatchlistItem, EventCategory, StoryCluster } from '../../types';
-import { Bell, BellOff, Plus, Trash2, X, CheckCircle, AlertTriangle, Zap } from 'lucide-react';
+import { Bell, BellOff, Plus, Trash2, X, CheckCircle, AlertTriangle, Zap, Info, ChevronDown, ChevronUp } from 'lucide-react';
 
 const SEVERITY_LEVELS = ['any', 'low', 'medium', 'high', 'critical'] as const;
 const SEVERITY_ORDER: Record<string, number> = { info: 0, low: 1, medium: 2, high: 3, critical: 4 };
@@ -306,6 +306,32 @@ function WatchlistRow({
   );
 }
 
+// ─── How-it-works explainer (collapsible) ──────────────────────────────────────
+function HowItWorks() {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="px-3 py-2 border-b border-border bg-surface/40 shrink-0">
+      <button
+        onClick={() => setOpen(v => !v)}
+        className="w-full flex items-center gap-1.5 text-[10px] font-mono text-dim hover:text-white transition-colors"
+      >
+        <Info size={10} className="text-accent shrink-0" />
+        <span className="flex-1 text-left">How keyword alerts work</span>
+        {open ? <ChevronUp size={10} /> : <ChevronDown size={10} />}
+      </button>
+      {open && (
+        <div className="mt-2 space-y-1.5 text-[9px] font-mono text-dim leading-relaxed">
+          <p><span className="text-white">1. Add an alert</span> — give it a name and one or more keywords (e.g. "Gaza ceasefire").</p>
+          <p><span className="text-white">2. Set filters</span> — optionally limit matches by severity (critical / high / medium), category (conflict, cyber…), or geography (e.g. "Lebanon").</p>
+          <p><span className="text-white">3. Live matching</span> — as new stories arrive, any cluster whose headline contains your keywords lights up here with a <span className="text-accent">⚡</span> icon.</p>
+          <p><span className="text-white">4. Browser notifications</span> — if you grant permission, new matches also fire a browser notification so you don't have to stay on this tab.</p>
+          <p><span className="text-white">Mute</span> an alert to pause matching without deleting it. <span className="text-white">Delete</span> removes it permanently.</p>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ─── Main panel ───────────────────────────────────────────────────────────────
 export function WatchlistPanel() {
   const { state, dispatch } = useApp();
@@ -346,46 +372,72 @@ export function WatchlistPanel() {
       {/* Toolbar */}
       <div className="px-3 py-2 border-b border-border flex items-center gap-2 shrink-0">
         <Bell size={12} className="text-accent" />
-        <span className="text-[10px] font-mono text-white font-semibold">Watchlist</span>
-        {totalMatches > 0 && (
-          <span className="text-[9px] font-mono bg-accent/20 text-accent px-1.5 py-0.5 rounded-full">
-            {totalMatches} active
-          </span>
-        )}
-        <div className="flex-1" />
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2">
+            <span className="text-[10px] font-mono text-white font-semibold">Keyword Alerts</span>
+            {totalMatches > 0 && (
+              <span className="text-[9px] font-mono bg-accent/20 text-accent px-1.5 py-0.5 rounded-full animate-pulse">
+                {totalMatches} live match{totalMatches !== 1 ? 'es' : ''}
+              </span>
+            )}
+          </div>
+          <div className="text-[9px] font-mono text-dim/60 mt-0.5">
+            Track breaking stories by keyword — get alerted when they appear
+          </div>
+        </div>
         <AddItemForm onAdd={addItem} />
       </div>
 
-      {/* Info banner */}
-      <div className="px-3 py-1.5 bg-accent/5 border-b border-accent/20 flex items-start gap-1.5 shrink-0">
-        <AlertTriangle size={9} className="text-accent shrink-0 mt-0.5" />
-        <span className="text-[9px] font-mono text-dim leading-relaxed">
-          Keyword alerts match against live story headlines. Add keywords, set severity/category filters, and view matching stories in real time.
+      {/* How-it-works */}
+      <HowItWorks />
+
+      {/* Live status bar */}
+      <div className="px-3 py-1.5 bg-surface/20 border-b border-border flex items-center gap-2 shrink-0">
+        <div className={`w-1.5 h-1.5 rounded-full shrink-0 ${totalMatches > 0 ? 'bg-accent animate-pulse' : 'bg-dim/30'}`} />
+        <span className="text-[9px] font-mono text-dim flex-1">
+          {watchlist.length === 0
+            ? 'No alerts configured — add your first keyword alert above'
+            : totalMatches > 0
+              ? `${totalMatches} stor${totalMatches !== 1 ? 'ies' : 'y'} matching your alerts right now`
+              : `${watchlist.filter(w => !w.muted).length} alert${watchlist.filter(w => !w.muted).length !== 1 ? 's' : ''} active — no matches in current feed`
+          }
         </span>
+        {totalMatches > 0 && (
+          <CheckCircle size={10} className="text-accent shrink-0" />
+        )}
       </div>
 
       {/* Content */}
       <div className="flex-1 overflow-y-auto p-3 space-y-2">
         {watchlist.length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-12 text-center gap-3">
-            <Bell size={28} className="text-dim/30" />
-            <div>
-              <div className="text-[11px] font-mono text-dim">No alerts configured</div>
-              <div className="text-[9px] font-mono text-dim/60 mt-1">
-                Add keywords to get notified when matching stories appear.
+          <div className="flex flex-col items-center justify-center py-10 text-center gap-4 px-4">
+            <div className="w-14 h-14 rounded-full bg-accent/10 border border-accent/20 flex items-center justify-center">
+              <Bell size={24} className="text-accent/40" />
+            </div>
+            <div className="space-y-1.5">
+              <div className="text-[12px] font-mono text-white font-semibold">No keyword alerts yet</div>
+              <div className="text-[10px] font-mono text-dim leading-relaxed max-w-xs">
+                Create an alert with keywords like <span className="text-accent">"Gaza ceasefire"</span> or <span className="text-accent">"Iran nuclear"</span>.
+                When a matching story lands in the feed, it appears here and triggers a browser notification.
               </div>
             </div>
+            <div className="flex flex-col gap-1.5 w-full max-w-xs text-left">
+              {[
+                { label: 'Gaza ceasefire', tag: 'conflict · critical' },
+                { label: 'NATO troop deployment', tag: 'military · high' },
+                { label: 'Fed interest rate', tag: 'economic · medium' },
+              ].map(ex => (
+                <div key={ex.label} className="flex items-center gap-2 p-2 rounded border border-border bg-surface/40">
+                  <Zap size={9} className="text-dim/40 shrink-0" />
+                  <span className="text-[10px] font-mono text-dim flex-1">{ex.label}</span>
+                  <span className="text-[8px] font-mono text-dim/50">{ex.tag}</span>
+                </div>
+              ))}
+            </div>
+            <p className="text-[9px] font-mono text-dim/50">Click "Add Alert" above to get started</p>
           </div>
         ) : (
           <>
-            {/* Active matches summary */}
-            {totalMatches > 0 && (
-              <div className="flex items-center gap-1.5 text-[9px] font-mono text-accent mb-1">
-                <CheckCircle size={10} />
-                {totalMatches} cluster{totalMatches !== 1 ? 's' : ''} matching your alerts right now
-              </div>
-            )}
-
             {watchlist.map(item => (
               <WatchlistRow
                 key={item.id}
@@ -399,11 +451,12 @@ export function WatchlistPanel() {
         )}
       </div>
 
-      {/* Footer hint */}
+      {/* Footer */}
       {watchlist.length > 0 && (
-        <div className="px-3 py-2 border-t border-border shrink-0">
-          <span className="text-[8px] font-mono text-dim">
-            Alerts match headline text only. Updates as new stories arrive.
+        <div className="px-3 py-2 border-t border-border shrink-0 flex items-center gap-2">
+          <AlertTriangle size={9} className="text-dim/50 shrink-0" />
+          <span className="text-[8px] font-mono text-dim/60">
+            Matches against live story headlines only. Browser notifications require permission — grant via browser prompt.
           </span>
         </div>
       )}

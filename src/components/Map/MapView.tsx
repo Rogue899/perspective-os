@@ -3,35 +3,13 @@ import maplibregl from 'maplibre-gl';
 import { Locate, LocateFixed, LoaderCircle, MessageCircle, X } from 'lucide-react';
 import { fetchGdeltEvents } from '../../services/gdelt';
 import { fetchEONETEvents, EONET_CATEGORY_COLOR, EONET_CATEGORY_ICON } from '../../services/eonet';
+import { discoverLiveChannelsForLocation } from '../../services/live-discovery';
 import type { EONETEvent } from '../../services/eonet';
 import { useApp } from '../../context/AppContext';
 import type { GdeltEvent } from '../../types';
 import { buildEmbedUrl } from '../../config/live-channels';
 
-interface RegionChannel { id: string; name: string; channelId: string; }
-
-/** Return the most relevant live news channels for a given coordinate. */
-function getRegionChannels(lat: number, lng: number): RegionChannel[] {
-  const AJ   = { id: 'aljazeera', name: 'Al Jazeera',  channelId: 'UCNye-wNBqNL5ZzHSJdse7ng' };
-  const BBC  = { id: 'bbc',       name: 'BBC News',     channelId: 'UC16niRr50-MSBwiO3YDb3RA' };
-  const DW   = { id: 'dw',        name: 'DW News',      channelId: 'UCknLrEdhRCp1aegoMqRaCZg' };
-  const F24  = { id: 'france24',  name: 'France 24',    channelId: 'UCQfwfsi5VrQ8yKZ-UWmAEFg' };
-  const EURO = { id: 'euronews',  name: 'Euronews',     channelId: 'UCg7JaqKJTg7JGSJ8sBHmH5Q' };
-  const SKY  = { id: 'skynews',   name: 'Sky News',     channelId: 'UCoMdktPbSTixAyNGwb-UYkQ' };
-
-  // Middle East / North Africa
-  if (lng >= 20 && lng <= 65 && lat >= 8 && lat <= 42)  return [AJ, BBC, DW, F24];
-  // Europe
-  if (lng >= -12 && lng <= 45 && lat >= 34 && lat <= 72) return [BBC, EURO, F24, DW, SKY];
-  // North America
-  if (lng <= -50 && lng >= -170 && lat >= 15)            return [BBC, DW, F24];
-  // Sub-Saharan Africa
-  if (lat <= 15 && lng >= -20 && lng <= 55)              return [AJ, F24, BBC];
-  // East / South Asia
-  if (lng >= 60 && lat >= -15 && lat <= 55)              return [DW, BBC, AJ];
-  // Default (global)
-  return [AJ, BBC, DW, F24];
-}
+interface RegionChannel { id: string; name: string; channelId: string; reason?: string; }
 
 // Free tile source — no token needed
 const MAP_STYLE = 'https://tiles.openfreemap.org/styles/dark';
@@ -76,6 +54,9 @@ export function MapView() {
   const [floatingLocation, setFloatingLocation] = useState<{ name: string; lat: number; lng: number } | null>(null);
   const [floatingTab, setFloatingTab] = useState<'news' | 'video'>('news');
   const [activeVideoChannel, setActiveVideoChannel] = useState<string | null>(null);
+  const [regionChannels, setRegionChannels] = useState<RegionChannel[]>([]);
+  const [discoveringChannels, setDiscoveringChannels] = useState(false);
+  const [channelFallback, setChannelFallback] = useState(false);
 
   const distanceKm = useCallback((aLat: number, aLng: number, bLat: number, bLng: number) => {
     const toRad = (v: number) => (v * Math.PI) / 180;
@@ -107,9 +88,43 @@ export function MapView() {
     return merged.slice(0, 6);
   }, [clusters, distanceKm]);
 
-  const regionChannels = floatingLocation
-    ? getRegionChannels(floatingLocation.lat, floatingLocation.lng)
-    : [];
+  useEffect(() => {
+    let cancelled = false;
+    if (!floatingLocation) {
+      setRegionChannels([]);
+      setActiveVideoChannel(null);
+      return;
+    }
+
+    setDiscoveringChannels(true);
+    discoverLiveChannelsForLocation({
+      lat: floatingLocation.lat,
+      lng: floatingLocation.lng,
+      locationName: floatingLocation.name,
+      topic: getLocationStories(floatingLocation.lat, floatingLocation.lng, floatingLocation.name)[0]?.headline,
+    })
+      .then(result => {
+        if (cancelled) return;
+        setRegionChannels(result.channels.map(c => ({
+          id: c.id,
+          name: c.name,
+          channelId: c.channelId,
+          reason: c.reason,
+        })));
+        setChannelFallback(result.fallbackUsed);
+        setActiveVideoChannel(result.channels[0]?.id ?? null);
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setRegionChannels([]);
+        setChannelFallback(true);
+      })
+      .finally(() => {
+        if (!cancelled) setDiscoveringChannels(false);
+      });
+
+    return () => { cancelled = true; };
+  }, [floatingLocation?.lat, floatingLocation?.lng, floatingLocation?.name, getLocationStories]);
 
   const platformShort: Record<string, string> = {
     youtube: 'YouTube',
@@ -530,6 +545,9 @@ export function MapView() {
             </div>
           ) : (
             <div className="p-2.5 space-y-2">
+              {discoveringChannels && (
+                <div className="text-[10px] text-dim font-mono animate-pulse">Finding local live channels…</div>
+              )}
               {/* Channel tabs */}
               <div className="flex gap-1 flex-wrap pb-2 border-b border-border mb-2">
                 {regionChannels.map(ch => {
@@ -550,16 +568,30 @@ export function MapView() {
               {/* Embedded player */}
               {(() => {
                 const active = regionChannels.find(c => c.id === (activeVideoChannel ?? regionChannels[0]?.id)) ?? regionChannels[0];
-                if (!active) return <div className="text-[10px] text-dim font-mono py-4 text-center">No channels available.</div>;
+                if (!active) {
+                  return (
+                    <div className="text-[10px] text-dim font-mono py-4 text-center space-y-2">
+                      <div>No channels available for this location yet.</div>
+                      <a
+                        href={`https://www.youtube.com/results?search_query=${encodeURIComponent(`${floatingLocation.name} live news`)}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-1 px-2 py-1 rounded border border-border hover:border-accent/40 hover:text-white"
+                      >
+                        Any-source fallback search
+                      </a>
+                    </div>
+                  );
+                }
                 return (
                   <div className="rounded overflow-hidden border border-border bg-black/40">
                     <div className="px-2 py-1 border-b border-border text-[10px] font-mono text-dim flex items-center justify-between">
                       <span>▶ {active.name} — Live</span>
-                      <span className="text-[9px] opacity-50">May show offline if not streaming</span>
+                      <span className="text-[9px] opacity-50">{channelFallback ? 'Fallback ranking' : 'AI-ranked local'}</span>
                     </div>
                     <iframe
                       key={active.channelId}
-                      src={buildEmbedUrl(active.channelId)}
+                      src={`${buildEmbedUrl(active.channelId)}&autoplay=1&mute=1`}
                       className="w-full h-48"
                       allow="autoplay; encrypted-media; picture-in-picture"
                       allowFullScreen

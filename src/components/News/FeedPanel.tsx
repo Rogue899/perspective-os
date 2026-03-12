@@ -3,31 +3,33 @@ import { useApp } from '../../context/AppContext';
 import { StoryCard, StoryGridCard } from './StoryCard';
 import { getAllSources, getSourceById } from '../../config/sources';
 import { fetchAllFeeds } from '../../services/rss';
+import { fetchNewsDataArticles } from '../../services/newsdata';
 import { clusterArticles } from '../../utils/story-cluster';
 import { getTopicFeed, gdeltToRaw, type GdeltTopic } from '../../services/gdelt';
 import { detectUserLocation } from '../../services/geo';
 import type { GeoContext } from '../../services/geo';
 import { getAllCircuitStates, type CircuitState } from '../../services/circuit-breaker';
 import { generateKeywords } from '../../services/ai';
-import { Filter, Wifi, WifiOff, MapPin, X, Zap, AlertTriangle, Sparkles, Radio, LayoutList, LayoutGrid, Globe } from 'lucide-react';
+import { Filter, Wifi, WifiOff, MapPin, X, Zap, AlertTriangle, Sparkles, Radio, LayoutList, LayoutGrid, Globe, MessageCircle } from 'lucide-react';
 import type { EventCategory } from '../../types';
 
-const CATEGORIES: Array<{ id: EventCategory | 'all'; label: string; gdelt?: boolean }> = [
-  { id: 'all',            label: 'All' },
-  { id: 'conflict',       label: 'Conflict',  gdelt: true },
-  { id: 'military',       label: 'Military',  gdelt: true },
-  { id: 'terrorism',      label: 'Terror',    gdelt: true },
-  { id: 'diplomatic',     label: 'Diplomacy', gdelt: true },
-  { id: 'protest',        label: 'Protests',  gdelt: true },
-  { id: 'economic',       label: 'Economy',   gdelt: true },
-  { id: 'cyber',          label: 'Cyber',     gdelt: true },
-  { id: 'disaster',       label: 'Disaster',  gdelt: true },
-  { id: 'health',         label: 'Health',    gdelt: true },
-  { id: 'science',        label: 'Science',   gdelt: true },
-  { id: 'sport',          label: 'Sports',    gdelt: true },
-  { id: 'infrastructure', label: 'Infra' },
-  { id: 'tech',           label: 'Tech',      gdelt: true },
-  { id: 'general',        label: 'General' },
+const CATEGORIES: Array<{ key: string; id: EventCategory | 'all'; label: string; gdelt?: boolean }> = [
+  { key: 'all',            id: 'all',            label: 'All' },
+  { key: 'conflict',       id: 'conflict',       label: 'Conflict',  gdelt: true },
+  { key: 'military',       id: 'military',       label: 'Military',  gdelt: true },
+  { key: 'terrorism',      id: 'terrorism',      label: 'Terror',    gdelt: true },
+  { key: 'diplomatic',     id: 'diplomatic',     label: 'Diplomacy', gdelt: true },
+  { key: 'protest',        id: 'protest',        label: 'Protests',  gdelt: true },
+  { key: 'economic',       id: 'economic',       label: 'Economy',   gdelt: true },
+  { key: 'cyber',          id: 'cyber',          label: 'Cyber',     gdelt: true },
+  { key: 'disaster',       id: 'disaster',       label: 'Disaster',  gdelt: true },
+  { key: 'health',         id: 'health',         label: 'Health',    gdelt: true },
+  { key: 'science',        id: 'science',        label: 'Science',   gdelt: true },
+  { key: 'sports',         id: 'sport',          label: 'Sports',    gdelt: true },
+  { key: 'sport',          id: 'sport',          label: 'Sport',     gdelt: true },
+  { key: 'infrastructure', id: 'infrastructure', label: 'Infra' },
+  { key: 'tech',           id: 'tech',           label: 'Tech',      gdelt: true },
+  { key: 'general',        id: 'general',        label: 'General' },
 ];
 
 // Map category → GDELT topic key (covers all GDELT-enriched tabs)
@@ -90,7 +92,7 @@ const CATEGORY_ALIASES: Partial<Record<EventCategory | 'all', EventCategory[]>> 
   general:    ['general'],
 };
 
-export function FeedPanel({ onRefresh, defaultGrid }: { onRefresh?: () => void; defaultGrid?: boolean }) {
+export function FeedPanel({ onRefresh, defaultGrid, hideGridControls }: { onRefresh?: () => void; defaultGrid?: boolean; hideGridControls?: boolean }) {
   const { state, dispatch } = useApp();
   const { clusters, loading, settings, locationFilter, activePanel } = state;
   const [filter, setFilter] = useState<EventCategory | 'all'>('all');
@@ -110,6 +112,8 @@ export function FeedPanel({ onRefresh, defaultGrid }: { onRefresh?: () => void; 
   const [discoveryInput, setDiscoveryInput] = useState('');
   const [discoveryKeywords, setDiscoveryKeywords] = useState<string[]>([]);
   const [discoveryLoading, setDiscoveryLoading] = useState(false);
+  const [analysisTopic, setAnalysisTopic] = useState<string | null>(null);
+  const [analysisAnswer, setAnalysisAnswer] = useState<string>('');
   const [hitsExpanded, setHitsExpanded] = useState(false);
   const [gridCols, setGridCols] = useState(2); // 2–4 columns in grid view
   const allSources = getAllSources();
@@ -137,21 +141,21 @@ export function FeedPanel({ onRefresh, defaultGrid }: { onRefresh?: () => void; 
   // ── Topic keyword for social __TOPIC__ feeds ────────────────────────────────
   const topicFromFilter = useCallback((category: EventCategory | 'all'): string => {
     const map: Record<EventCategory | 'all', string> = {
-      all:            'world news geopolitics',
-      conflict:       'war conflict frontline',
-      military:       'military strike troops defense',
-      terrorism:      'terror attack extremist',
-      diplomatic:     'diplomacy summit treaty foreign minister',
-      protest:        'protest demonstration civil unrest',
-      economic:       'economy market trade tariff inflation',
-      cyber:          'cyberattack hack ransomware breach',
-      disaster:       'earthquake flood hurricane wildfire disaster',
-      health:         'health pandemic medicine hospital outbreak',
-      science:        'science research discovery space climate',
-      sport:          'sports football soccer basketball olympics championship',
-      infrastructure: 'infrastructure energy pipeline grid',
-      tech:           'technology AI startup chip semiconductor',
-      general:        'world news',
+      all:            'world news geopolitics breaking analysis',
+      conflict:       'war conflict frontline ceasefire strikes casualties',
+      military:       'military deployment airstrike missile defense troops',
+      terrorism:      'terror attack extremist hostage security alert',
+      diplomatic:     'diplomacy summit treaty sanctions foreign minister',
+      protest:        'protest demonstration civil unrest crackdown',
+      economic:       'economy markets trade tariff inflation commodities',
+      cyber:          'cyberattack ransomware hacking breach apt threat',
+      disaster:       'earthquake flood hurricane wildfire disaster emergency',
+      health:         'health pandemic outbreak vaccine hospital medicine',
+      science:        'science research discovery climate space innovation',
+      sport:          'sports football soccer basketball olympics championship league',
+      infrastructure: 'infrastructure energy pipeline power grid logistics',
+      tech:           'technology AI semiconductor startup product launch cybersecurity',
+      general:        'world breaking news',
     };
     return map[category] ?? 'world news';
   }, []);
@@ -166,12 +170,16 @@ export function FeedPanel({ onRefresh, defaultGrid }: { onRefresh?: () => void; 
   }, []);
 
   // ── Main refresh ────────────────────────────────────────────────────────────
-  const refresh = useCallback(async () => {
+  const refresh = useCallback(async (topicOverride?: string) => {
     if (isFetching.current) return;
     isFetching.current = true;
     dispatch({ type: 'SET_LOADING', payload: true });
     try {
-      const topic = topicFromFilter(filter);
+      const topic = topicOverride?.trim()
+        ? topicOverride.trim()
+        : (activePanel === 'analysis' && analysisTopic?.trim())
+          ? analysisTopic.trim()
+          : topicFromFilter(filter);
 
       // Only fetch sources that have a real RSS URL (skip synthetic 'gdelt' entry)
       const enabledIds = (
@@ -201,6 +209,32 @@ export function FeedPanel({ onRefresh, defaultGrid }: { onRefresh?: () => void; 
       }
       setGdeltCount(enriched);
 
+      // Optional provider fallback/enrichment (NewsData.io)
+      // Only pull when coverage is thin or topic tabs need broader recall.
+      const shouldUseNewsData =
+        rssArticles.length < 35 ||
+        filter === 'tech' ||
+        filter === 'sport' ||
+        filter === 'cyber' ||
+        filter === 'economic';
+
+      if (shouldUseNewsData) {
+        try {
+          const nd = await fetchNewsDataArticles({
+            topic,
+            category: filter,
+            size: rssArticles.length < 20 ? 25 : 12,
+          });
+          if (nd.length > 0) {
+            const seen = new Set(rssArticles.map(a => a.url));
+            const deduped = nd.filter(a => !seen.has(a.url));
+            rssArticles.push(...deduped);
+          }
+        } catch {
+          // silent optional fallback
+        }
+      }
+
       const newClusters = await clusterArticles(rssArticles);
       dispatch({ type: 'SET_CLUSTERS', payload: newClusters });
       dispatch({ type: 'SET_LAST_REFRESH', payload: new Date() });
@@ -213,7 +247,7 @@ export function FeedPanel({ onRefresh, defaultGrid }: { onRefresh?: () => void; 
       dispatch({ type: 'SET_LOADING', payload: false });
       isFetching.current = false;
     }
-  }, [settings.enabledSources, dispatch, allSources, filter, topicFromFilter]);
+  }, [settings.enabledSources, dispatch, allSources, filter, topicFromFilter, activePanel, analysisTopic]);
 
   // Initial load + 5-min auto-refresh
   useEffect(() => {
@@ -299,16 +333,49 @@ export function FeedPanel({ onRefresh, defaultGrid }: { onRefresh?: () => void; 
       const topHeadlines = clusters.slice(0, 8).map(c => c.headline);
       const generated = await generateKeywords(topic, topHeadlines);
       const keywords = Array.from(new Set([topic, ...generated])).slice(0, 10);
+      const llmTopic = Array.from(new Set([topic, ...generated.slice(0, 4)])).join(' ');
       setDiscoveryKeywords(keywords);
-      setSelectedKeyword(keywords[0] ?? topic);
+      setSelectedKeyword(null);
+      setAnalysisTopic(llmTopic);
+      await refresh(llmTopic);
+
+      try {
+        const context = clusters
+          .slice(0, 8)
+          .map(c => `- ${c.headline} (${c.category}, ${c.severity}, ${c.sourceIds.length} sources)`)
+          .join('\n');
+        const prompt = `You are a geopolitical news analyst. User question: "${topic}"\n\nCurrent dashboard headlines:\n${context || '- no headlines available'}\n\nAnswer in 4-6 short bullet points with: (1) what is happening now, (2) key actors, (3) uncertainty/verification notes. Keep under 160 words.`;
+        const res = await fetch('/api/ai', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            prompt,
+            tier: 'flash',
+            maxTokens: 240,
+            cacheKey: `analyze-ask:${topic.toLowerCase().slice(0, 80)}`,
+            cacheTtl: 300,
+          }),
+        });
+        const data = await res.json();
+        const answer = String(data?.text ?? '')
+          .replace(/^```[a-z]*\n?/i, '')
+          .replace(/\n?```$/i, '')
+          .trim();
+        setAnalysisAnswer(answer || 'No answer generated yet. Try refining your question.');
+      } catch {
+        setAnalysisAnswer('AI response is unavailable right now. The feed was still customized to your query.');
+      }
     } catch {
       const fallback = topic.split(/\s+/).filter(Boolean).slice(0, 8);
       setDiscoveryKeywords([topic, ...fallback]);
-      setSelectedKeyword(topic);
+      setSelectedKeyword(null);
+      setAnalysisTopic(topic);
+      await refresh(topic);
+      setAnalysisAnswer('The feed was customized to your query, but AI summary generation failed.');
     } finally {
       setDiscoveryLoading(false);
     }
-  }, [clusters, discoveryInput]);
+  }, [clusters, discoveryInput, refresh]);
 
   // ── Client-side filtering ───────────────────────────────────────────────────
   // Keyword regex fallback — catches stories AI classified as 'general' but whose text matches
@@ -541,8 +608,8 @@ export function FeedPanel({ onRefresh, defaultGrid }: { onRefresh?: () => void; 
           </button>
         </div>
 
-        {/* Grid density +/- (only in grid mode, not in map mode) */}
-        {viewMode === 'grid' && activePanel !== 'map' && (
+        {/* Grid density +/- (hidden in map mode via hideGridControls prop) */}
+        {viewMode === 'grid' && !hideGridControls && (
           <div className="flex items-center border border-border/60 rounded overflow-hidden">
             <button
               onClick={() => setGridCols(c => Math.max(2, c - 1))}
@@ -576,6 +643,9 @@ export function FeedPanel({ onRefresh, defaultGrid }: { onRefresh?: () => void; 
       {/* Analyze middle discovery search */}
       {activePanel === 'analysis' && (
         <div className="px-3 py-2 border-b border-border/70 shrink-0 space-y-2">
+          <div className="flex items-center gap-1.5 text-[9px] font-mono text-accent/90 uppercase tracking-wider">
+            <MessageCircle size={10} /> Ask AI
+          </div>
           <div className="flex items-center gap-2">
             <input
               value={discoveryInput}
@@ -586,7 +656,7 @@ export function FeedPanel({ onRefresh, defaultGrid }: { onRefresh?: () => void; 
                   void runDiscoverySearch();
                 }
               }}
-              placeholder="Analyze topic (e.g., Red Sea shipping attacks, Gaza ceasefire, Taiwan drills)"
+              placeholder="Ask AI: what is happening in Lebanon now?"
               className="flex-1 text-[10px] font-mono bg-surface border border-border rounded px-2 py-1.5 text-dim hover:text-white focus:outline-none focus:border-accent"
             />
             <button
@@ -594,14 +664,17 @@ export function FeedPanel({ onRefresh, defaultGrid }: { onRefresh?: () => void; 
               disabled={!discoveryInput.trim() || discoveryLoading}
               className="px-2 py-1.5 text-[10px] font-mono rounded border border-accent/40 text-accent hover:bg-accent/10 disabled:opacity-50"
             >
-              {discoveryLoading ? 'Searching…' : 'Discover'}
+              {discoveryLoading ? 'Asking…' : 'Ask AI'}
             </button>
-            {(discoveryKeywords.length > 0 || selectedKeyword) && (
+            {(discoveryKeywords.length > 0 || selectedKeyword || analysisAnswer || analysisTopic) && (
               <button
                 onClick={() => {
                   setDiscoveryInput('');
                   setDiscoveryKeywords([]);
                   setSelectedKeyword(null);
+                  setAnalysisTopic(null);
+                  setAnalysisAnswer('');
+                  void refresh(topicFromFilter(filter));
                 }}
                 className="px-2 py-1.5 text-[10px] font-mono rounded border border-border text-dim hover:text-white"
               >
@@ -609,6 +682,16 @@ export function FeedPanel({ onRefresh, defaultGrid }: { onRefresh?: () => void; 
               </button>
             )}
           </div>
+          {analysisTopic && (
+            <div className="text-[9px] font-mono text-accent/90 border border-accent/30 bg-accent/5 rounded px-2 py-1">
+              LLM feed topic active: {analysisTopic}
+            </div>
+          )}
+          {analysisAnswer && (
+            <div className="text-[10px] text-white/85 leading-relaxed border border-border rounded px-2 py-1.5 bg-white/[0.02] whitespace-pre-wrap">
+              {analysisAnswer}
+            </div>
+          )}
           {discoveryKeywords.length > 0 && (
             <div className="flex gap-1.5 flex-wrap">
               {discoveryKeywords.map(kw => (
@@ -668,7 +751,7 @@ export function FeedPanel({ onRefresh, defaultGrid }: { onRefresh?: () => void; 
       <div className="flex gap-1 px-3 py-2 overflow-x-auto shrink-0 border-b border-border">
         {CATEGORIES.map(cat => (
           <button
-            key={cat.id}
+            key={cat.key}
             onClick={() => setFilter(cat.id)}
             className={`relative px-2 py-1 text-[10px] font-mono rounded whitespace-nowrap transition-colors ${
               filter === cat.id

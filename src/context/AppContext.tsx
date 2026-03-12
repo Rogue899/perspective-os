@@ -56,6 +56,14 @@ const DEFAULT_SETTINGS: AppSettings = {
   enableConflictLayer:  true,
   enableFlightLayer:    false,
   aiProvider:           'gemini-flash',
+  socialAuth: {
+    x: false,
+    reddit: false,
+    meta: false,
+    tiktok: false,
+    scopes: ['read:public'],
+    tokenVersion: 1,
+  },
 };
 
 function loadSettings(): AppSettings {

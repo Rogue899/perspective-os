@@ -10,6 +10,18 @@ interface WikiFact {
   thumbnail?: string;
 }
 
+interface ActorEntry {
+  name: string;
+  mentions: number;
+}
+
+interface ExternalSnippet {
+  source: 'Wikipedia' | 'GDELT' | 'Internet Archive';
+  title: string;
+  snippet: string;
+  url: string;
+}
+
 const SKIP_WORDS = new Set([
   'The','This','That','They','Then','There','With','From','Into','Over',
   'After','Says','Amid','Hits','Kills','Dead','Will','Warns','Report',
@@ -25,6 +37,41 @@ function extractSearchTerms(cluster: StoryCluster): string[] {
   return [...new Set(terms)].slice(0, 2);
 }
 
+function extractActorsFromText(text: string): string[] {
+  const matches = text.match(/\b[A-Z][a-z]{2,}(?:\s+[A-Z][a-z]{2,})?\b/g) ?? [];
+  return matches.filter(name => !SKIP_WORDS.has(name.split(' ')[0]));
+}
+
+function isEmptyAiResponse(text: string): boolean {
+  const cleaned = text.trim();
+  return !cleaned || cleaned === '{}' || cleaned === '[]' || cleaned.toLowerCase() === 'null';
+}
+
+function buildLocalHistoryFallback(params: {
+  headline: string;
+  timeline: string[];
+  actors: ActorEntry[];
+  gdelt: GdeltArticle[];
+}): string {
+  const first = params.timeline[params.timeline.length - 1] ?? 'Earlier reports are limited.';
+  const latest = params.timeline[0] ?? 'Latest framing is still developing.';
+  const actorLine = params.actors.slice(0, 4).map(a => a.name).join(', ');
+  const gdeltLine = params.gdelt.slice(0, 2).map(g => `${g.domain}: ${g.title}`).join(' | ');
+
+  return [
+    `The available historical record for "${params.headline}" shows evolving framing rather than a single settled narrative. Early coverage emphasized: ${first}. More recent coverage emphasizes: ${latest}.`,
+    '',
+    'Inflection points:',
+    `- Early framing: ${first}`,
+    `- Recent framing: ${latest}`,
+    `- Key actors appearing across sources: ${actorLine || 'insufficient named-actor overlap yet'}`,
+    '',
+    'Perspective gaps:',
+    `- Source disagreement remains on attribution, intent, and proportionality of actions in the timeline.`,
+    `- Open-source corroboration is still partial${gdeltLine ? `; current signals include ${gdeltLine}` : ''}.`,
+  ].join('\n');
+}
+
 export function HistoricalPanel({
   cluster,
   onClose,
@@ -37,6 +84,10 @@ export function HistoricalPanel({
   const [aiSummary, setAiSummary] = useState('');
   const [synthLoading, setSynthLoading] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [actors, setActors] = useState<ActorEntry[]>([]);
+  const [narrativeShift, setNarrativeShift] = useState<Array<{ when: string; summary: string }>>([]);
+  const [externalSnippets, setExternalSnippets] = useState<ExternalSnippet[]>([]);
+  const [snippetsLoading, setSnippetsLoading] = useState(false);
 
   const searchTerms = extractSearchTerms(cluster);
 
@@ -44,11 +95,16 @@ export function HistoricalPanel({
     let cancelled = false;
     setFacts([]);
     setGdeltArticles([]);
+    setActors([]);
+    setNarrativeShift([]);
+    setExternalSnippets([]);
     setAiSummary('');
     setLoading(true);
+    setSnippetsLoading(true);
 
     const run = async () => {
       const results: WikiFact[] = [];
+      const snippets: ExternalSnippet[] = [];
 
       // Fetch Wikipedia summaries
       for (const term of searchTerms) {
@@ -82,16 +138,97 @@ export function HistoricalPanel({
 
       if (!cancelled) setFacts(results);
 
+      results.slice(0, 2).forEach(item => {
+        snippets.push({
+          source: 'Wikipedia',
+          title: item.title,
+          snippet: item.summary,
+          url: item.url,
+        });
+      });
+
+      const actorCounter = new Map<string, number>();
+      cluster.articles.forEach(article => {
+        const pool = `${article.title} ${article.description ?? ''}`;
+        extractActorsFromText(pool).forEach(name => {
+          actorCounter.set(name, (actorCounter.get(name) ?? 0) + 1);
+        });
+      });
+      if (!cancelled) {
+        setActors(
+          [...actorCounter.entries()]
+            .sort((a, b) => b[1] - a[1])
+            .slice(0, 8)
+            .map(([name, mentions]) => ({ name, mentions }))
+        );
+      }
+
+      const chron = [...cluster.articles].sort((a, b) => +new Date(a.publishedAt) - +new Date(b.publishedAt));
+      if (!cancelled && chron.length > 1) {
+        const pivot = Math.floor(chron.length / 2);
+        const early = chron.slice(0, Math.max(1, pivot));
+        const late = chron.slice(Math.max(1, pivot));
+        setNarrativeShift([
+          {
+            when: `Early (${new Date(early[0].publishedAt).toLocaleDateString()})`,
+            summary: early[0]?.title ?? 'No early narrative found',
+          },
+          {
+            when: `Later (${new Date(late[late.length - 1].publishedAt).toLocaleDateString()})`,
+            summary: late[late.length - 1]?.title ?? 'No later narrative found',
+          },
+        ]);
+      }
+
       // Fetch open-source timeline from GDELT (beyond Wikipedia)
       try {
         const query = searchTerms.length > 0 ? searchTerms.join(' OR ') : cluster.headline;
         const gdelt = await searchGdelt(query, 10);
         if (!cancelled) setGdeltArticles(gdelt);
+
+        gdelt.slice(0, 3).forEach(item => {
+          snippets.push({
+            source: 'GDELT',
+            title: item.title,
+            snippet: `${item.domain || 'Open-source'} • ${item.seendate?.slice(0, 8) || 'recent signal'}`,
+            url: item.url,
+          });
+        });
       } catch {
         /* noop */
       }
 
+      try {
+        const primaryUrl = cluster.articles[0]?.url;
+        if (primaryUrl) {
+          const cdx = await fetch(
+            `https://web.archive.org/cdx/search/cdx?url=${encodeURIComponent(primaryUrl)}&output=json&fl=timestamp,original,statuscode&filter=statuscode:200&limit=1`
+          );
+          if (cdx.ok) {
+            const rows = await cdx.json();
+            if (Array.isArray(rows) && rows.length > 1 && Array.isArray(rows[1])) {
+              const ts = String(rows[1][0] ?? '');
+              const original = String(rows[1][1] ?? primaryUrl);
+              if (ts.length >= 8) {
+                const date = `${ts.slice(0, 4)}-${ts.slice(4, 6)}-${ts.slice(6, 8)}`;
+                snippets.push({
+                  source: 'Internet Archive',
+                  title: 'Archived snapshot available',
+                  snippet: `Historical capture found for this story URL (${date}).`,
+                  url: `https://web.archive.org/web/${ts}/${original}`,
+                });
+              }
+            }
+          }
+        }
+      } catch {
+        /* noop */
+      }
+
+      if (!cancelled) setExternalSnippets(snippets.slice(0, 6));
+
       if (!cancelled) setLoading(false);
+      if (!cancelled) setSnippetsLoading(false);
     };
 
     run();
@@ -104,11 +241,11 @@ export function HistoricalPanel({
   const runHistorySynthesis = async () => {
     setSynthLoading(true);
     try {
-      const timeline = [...cluster.articles]
+      const timelineRows = [...cluster.articles]
         .sort((a, b) => +new Date(b.publishedAt) - +new Date(a.publishedAt))
         .slice(0, 8)
-        .map(a => `${new Date(a.publishedAt).toISOString().slice(0, 10)} | ${a.sourceName}: ${a.title}`)
-        .join('\n');
+        .map(a => `${new Date(a.publishedAt).toISOString().slice(0, 10)} | ${a.sourceName}: ${a.title}`);
+      const timeline = timelineRows.join('\n');
 
       const wikiCtx = facts.map(f => `${f.title}: ${f.summary}`).join('\n').slice(0, 1400);
       const gdeltCtx = gdeltArticles.map(g => `${g.seendate} | ${g.domain}: ${g.title}`).join('\n').slice(0, 1400);
@@ -127,20 +264,50 @@ Output format:
 
 Be factual, avoid bias, and mark uncertainty clearly.`;
 
-      const res = await fetch('/api/ai', {
+      const request = async (keySuffix: string) => fetch('/api/ai', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ prompt, tier: 'flash', maxTokens: 520, cacheKey: `history:${cluster.id}`, cacheTtl: 3600 }),
+        body: JSON.stringify({ prompt, tier: 'flash', maxTokens: 520, cacheKey: `history:${cluster.id}:v2:${keySuffix}`, cacheTtl: 3600 }),
       });
-      const data = await res.json();
-      setAiSummary(
-        String(data.text ?? '')
+
+      let res = await request('main');
+      let data = await res.json();
+      let cleaned = String(data.text ?? '')
+        .replace(/^```[a-z]*\n?/i, '')
+        .replace(/\n?```$/i, '')
+        .trim();
+
+      if (isEmptyAiResponse(cleaned)) {
+        res = await request('retry');
+        data = await res.json();
+        cleaned = String(data.text ?? '')
           .replace(/^```[a-z]*\n?/i, '')
           .replace(/\n?```$/i, '')
-          .trim()
-      );
+          .trim();
+      }
+
+      if (isEmptyAiResponse(cleaned)) {
+        cleaned = buildLocalHistoryFallback({
+          headline: cluster.headline,
+          timeline: timelineRows,
+          actors,
+          gdelt: gdeltArticles,
+        });
+      }
+
+      setAiSummary(cleaned);
     } catch {
-      setAiSummary('Historical synthesis failed. Try again in a moment.');
+      const timelineRows = [...cluster.articles]
+        .sort((a, b) => +new Date(b.publishedAt) - +new Date(a.publishedAt))
+        .slice(0, 8)
+        .map(a => `${new Date(a.publishedAt).toISOString().slice(0, 10)} | ${a.sourceName}: ${a.title}`);
+
+      setAiSummary(buildLocalHistoryFallback({
+        headline: cluster.headline,
+        timeline: timelineRows,
+        actors,
+        gdelt: gdeltArticles,
+      }));
     } finally {
       setSynthLoading(false);
     }
@@ -256,6 +423,42 @@ Be factual, avoid bias, and mark uncertainty clearly.`;
               </div>
             </div>
 
+            {/* Actors + alliances */}
+            {actors.length > 0 && (
+              <div className="px-4 py-4">
+                <h4 className="text-[11px] font-mono uppercase tracking-wider text-violet-300 mb-2.5">
+                  Actors & Alliances
+                </h4>
+                <div className="flex flex-wrap gap-1.5">
+                  {actors.map(actor => (
+                    <span
+                      key={actor.name}
+                      className="text-[10px] font-mono px-2 py-1 rounded border border-border bg-white/[0.02] text-white/85"
+                    >
+                      {actor.name} <span className="text-dim">({actor.mentions})</span>
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Narrative evolution */}
+            {narrativeShift.length > 0 && (
+              <div className="px-4 py-4">
+                <h4 className="text-[11px] font-mono uppercase tracking-wider text-cyan-300 mb-2.5">
+                  Narrative Evolution
+                </h4>
+                <div className="space-y-2">
+                  {narrativeShift.map((point, i) => (
+                    <div key={i} className="rounded border border-border bg-white/[0.02] p-2">
+                      <div className="text-[9px] font-mono text-cyan-300 mb-1">{point.when}</div>
+                      <p className="text-[11px] text-white/80 leading-relaxed">{point.summary}</p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
             {/* GDELT open-source feed */}
             {gdeltArticles.length > 0 && (
               <div className="px-4 py-4">
@@ -329,13 +532,37 @@ Be factual, avoid bias, and mark uncertainty clearly.`;
               </div>
             )}
 
-            {/* External search links */}
-            {searchTerms.length > 0 && (
+            {/* Pulled external snippets */}
+            {(snippetsLoading || externalSnippets.length > 0) && (
               <div className="px-4 py-3">
                 <p className="text-[9px] font-mono text-dim uppercase tracking-wider mb-2">
-                  Explore further
+                  Explore further (pulled snippets)
                 </p>
-                <div className="flex flex-wrap gap-2">
+                {snippetsLoading && externalSnippets.length === 0 ? (
+                  <div className="flex items-center gap-2 text-[10px] text-dim font-mono">
+                    <Loader2 size={10} className="animate-spin" /> Pulling external context snippets…
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    {externalSnippets.map((item, idx) => (
+                      <a
+                        key={`${item.source}-${idx}`}
+                        href={item.url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="block rounded border border-border bg-white/[0.02] hover:bg-white/[0.04] hover:border-accent/40 transition-colors p-2"
+                      >
+                        <div className="flex items-center gap-2 mb-1">
+                          <span className="text-[9px] font-mono text-accent/90">{item.source}</span>
+                          <ExternalLink size={8} className="ml-auto text-dim" />
+                        </div>
+                        <p className="text-[11px] text-white/85 leading-relaxed">{item.title}</p>
+                        <p className="text-[10px] text-dim mt-1 leading-relaxed">{item.snippet}</p>
+                      </a>
+                    ))}
+                  </div>
+                )}
+                <div className="flex flex-wrap gap-2 mt-2.5">
                   {searchTerms.map(term => (
                     <a
                       key={term}
@@ -348,28 +575,20 @@ Be factual, avoid bias, and mark uncertainty clearly.`;
                     </a>
                   ))}
                   <a
-                    href={`https://www.google.com/search?q=${encodeURIComponent(cluster.headline + ' history background')}`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-[9px] font-mono px-2 py-1 rounded border border-border text-dim hover:text-white hover:border-accent/50 transition-colors"
-                  >
-                    Google History ↗
-                  </a>
-                  <a
-                    href={`https://web.archive.org/web/*/${encodeURIComponent(cluster.headline)}`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-[9px] font-mono px-2 py-1 rounded border border-border text-dim hover:text-white hover:border-accent/50 transition-colors"
-                  >
-                    Internet Archive ↗
-                  </a>
-                  <a
                     href={`https://www.gdeltproject.org/#query=${encodeURIComponent(cluster.headline)}`}
                     target="_blank"
                     rel="noopener noreferrer"
                     className="text-[9px] font-mono px-2 py-1 rounded border border-border text-dim hover:text-white hover:border-accent/50 transition-colors"
                   >
                     GDELT Explore ↗
+                  </a>
+                  <a
+                    href={`https://www.google.com/search?q=${encodeURIComponent(cluster.headline + ' history background')}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-[9px] font-mono px-2 py-1 rounded border border-border text-dim hover:text-white hover:border-accent/50 transition-colors"
+                  >
+                    Google History ↗
                   </a>
                 </div>
               </div>

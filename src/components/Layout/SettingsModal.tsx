@@ -16,6 +16,42 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
   });
   const allSources = getAllSources();
 
+  const toggleAuth = (provider: 'x' | 'reddit' | 'meta' | 'tiktok') => {
+    update('socialAuth', {
+      ...settings.socialAuth,
+      [provider]: !settings.socialAuth[provider],
+      updatedAt: new Date().toISOString(),
+    });
+    if (!settings.socialAuth[provider]) {
+      const authUrls: Record<typeof provider, string> = {
+        x: 'https://developer.x.com/en/docs/authentication/oauth-2-0',
+        reddit: 'https://www.reddit.com/prefs/apps',
+        meta: 'https://developers.facebook.com/docs/facebook-login/',
+        tiktok: 'https://developers.tiktok.com/doc/login-kit-web',
+      };
+      window.open(authUrls[provider], '_blank', 'noopener,noreferrer');
+    }
+  };
+
+  const toggleScope = (scope: string) => {
+    const has = settings.socialAuth.scopes.includes(scope);
+    update('socialAuth', {
+      ...settings.socialAuth,
+      scopes: has
+        ? settings.socialAuth.scopes.filter(s => s !== scope)
+        : [...settings.socialAuth.scopes, scope],
+      updatedAt: new Date().toISOString(),
+    });
+  };
+
+  const rotateTokens = () => {
+    update('socialAuth', {
+      ...settings.socialAuth,
+      tokenVersion: settings.socialAuth.tokenVersion + 1,
+      updatedAt: new Date().toISOString(),
+    });
+  };
+
   const update = <K extends keyof typeof settings>(key: K, value: typeof settings[K]) => {
     setSettings(s => ({ ...s, [key]: value }));
   };
@@ -106,6 +142,73 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
             <div className="text-[11px] text-dim leading-relaxed">
               API keys are not editable or persisted in the browser UI anymore.
               Configure keys only in local server env (`.env.local`) for dev, or in Vercel project env for deploy.
+            </div>
+          </Section>
+
+          <Section title="Social OAuth" icon={<Link size={13} />}>
+            <div className="space-y-3">
+              <div className="grid grid-cols-2 gap-2">
+                {([
+                  ['x', 'X'],
+                  ['reddit', 'Reddit'],
+                  ['meta', 'Meta'],
+                  ['tiktok', 'TikTok'],
+                ] as const).map(([provider, label]) => {
+                  const connected = settings.socialAuth[provider];
+                  return (
+                    <button
+                      key={provider}
+                      onClick={() => toggleAuth(provider)}
+                      className={`px-3 py-2 text-xs font-mono rounded border transition-colors text-left ${
+                        connected
+                          ? 'border-green-500/40 bg-green-500/10 text-green-300'
+                          : 'border-border text-dim hover:text-white hover:border-accent/40'
+                      }`}
+                    >
+                      <div>{label}</div>
+                      <div className="text-[10px] opacity-80">{connected ? 'Connected' : 'Connect'}</div>
+                    </button>
+                  );
+                })}
+              </div>
+
+              <div>
+                <div className="text-[11px] font-mono text-dim mb-1">Consent scopes</div>
+                <div className="flex gap-1.5 flex-wrap">
+                  {['read:public', 'read:private', 'read:messages', 'profile:email'].map(scope => (
+                    <button
+                      key={scope}
+                      onClick={() => toggleScope(scope)}
+                      className={`px-2 py-1 text-[10px] font-mono rounded border transition-colors ${
+                        settings.socialAuth.scopes.includes(scope)
+                          ? 'border-accent/50 text-accent bg-accent/10'
+                          : 'border-border text-dim hover:text-white'
+                      }`}
+                    >
+                      {scope}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2 flex-wrap">
+                <button
+                  onClick={rotateTokens}
+                  className="px-3 py-1.5 text-xs font-mono rounded border border-amber-500/40 text-amber-300 hover:bg-amber-500/10"
+                >
+                  Rotate tokens
+                </button>
+                <button
+                  onClick={() => update('socialAuth', { x: false, reddit: false, meta: false, tiktok: false, scopes: ['read:public'], tokenVersion: settings.socialAuth.tokenVersion + 1, updatedAt: new Date().toISOString() })}
+                  className="px-3 py-1.5 text-xs font-mono rounded border border-red-500/40 text-red-300 hover:bg-red-500/10"
+                >
+                  Disconnect all
+                </button>
+                <span className="text-[10px] text-dim font-mono">
+                  token v{settings.socialAuth.tokenVersion}
+                  {settings.socialAuth.updatedAt ? ` · ${new Date(settings.socialAuth.updatedAt).toLocaleString()}` : ''}
+                </span>
+              </div>
             </div>
           </Section>
 

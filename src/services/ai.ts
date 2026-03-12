@@ -260,27 +260,36 @@ export async function generateKeywords(
   headlines: string[] = [],
 ): Promise<string[]> {
   const headlinesSample = headlines.slice(0, 6).join(' | ');
-  const prompt = `You are a geopolitical intelligence analyst generating search keywords for a global news monitor.
-Generate 8 diverse search keywords/phrases to find news, social media posts, media metadata, and rumours about this topic.
+  const prompt = `You are a search strategist for a geopolitical news intelligence engine.
+Generate high-recall, low-noise query phrases for RSS + social discovery.
 
 Topic: "${topic}"
-${headlinesSample ? `Recent headlines context: ${headlinesSample}` : ''}
+${headlinesSample ? `Recent headlines: ${headlinesSample}` : ''}
 
-Keyword types to include (mix of all):
-1. CORE EVENT — factual main story phrase (e.g. "Ukraine ceasefire talks")
-2. ACTOR — key person, country or org (e.g. "Zelensky NATO summit")
-3. SOCIAL SIGNAL — phrase likely trending on X/Reddit/TikTok (e.g. "Ukraine peace deal 2026")
-4. MEDIA META — editorial angle appearing in article tags/descriptions (e.g. "war negotiations breakdown")
-5. REGION — local or regional angle (e.g. "Kharkiv frontline update")
-6. RUMOUR — unverified angle, prefix EXACTLY with "rumour:" (e.g. "rumour: ceasefire deal imminent")
-7. HASHTAG TERM — social platform tag without # symbol (e.g. "StandWithUkraine diplomacy")
-8. COUNTER-NARRATIVE — opposing framing appearing in state/alternative media (e.g. "NATO aggression Ukraine")
+Return ONLY valid JSON in this exact shape:
+{
+  "keywords": [
+    "..."
+  ]
+}
+
+Generate exactly 8 keyword phrases with these intents (one each, diverse wording):
+1) Core event phrase
+2) Key actor/institution phrase
+3) Geographic/localized phrase
+4) Social-trending phrasing
+5) Investigative/evidence phrasing
+6) Economic/market-impact phrasing if relevant
+7) Counter-narrative phrasing seen in state/alt media
+8) Rumor/disputed phrasing prefixed EXACTLY with "rumour:"
 
 Rules:
-- 2-5 words per keyword
-- Return ONLY a JSON array of 8 strings, no markdown, no explanation
-- Vary the framing — some mainstream, some social, some counter-narrative
-Example output: ["Ukraine ceasefire talks", "Zelensky NATO summit", "Ukraine peace deal 2026", "war negotiations breakdown", "Kharkiv frontline update", "rumour: ceasefire deal imminent", "StandWithUkraine diplomacy", "NATO aggression Ukraine"]`;
+- 2-6 words each
+- Include at least one non-Western framing angle when topic is geopolitical
+- Avoid generic words alone (bad: "war", "breaking")
+- No hashtags, no punctuation-heavy strings
+- No duplicates
+- English output only`;
 
   try {
     const res = await fetchWithTimeout('/api/ai', {
@@ -292,16 +301,64 @@ Example output: ["Ukraine ceasefire talks", "Zelensky NATO summit", "Ukraine pea
     const data = await res.json();
     const cleaned = String(data.text ?? '')
       .replace(/^```json\s*/i, '').replace(/^```\s*/i, '').replace(/\s*```$/i, '').trim();
-    const parsed = JSON.parse(cleaned);
-    if (Array.isArray(parsed) && parsed.length > 0) {
-      return parsed.filter((k): k is string => typeof k === 'string').slice(0, 5);
+    const parsed: unknown = JSON.parse(cleaned);
+    const raw: unknown[] = Array.isArray(parsed)
+      ? parsed
+      : (typeof parsed === 'object' && parsed !== null && Array.isArray((parsed as { keywords?: unknown[] }).keywords))
+      ? ((parsed as { keywords: unknown[] }).keywords)
+      : [];
+
+    if (raw.length > 0) {
+      const normalized = raw
+        .filter((k: unknown): k is string => typeof k === 'string')
+        .map(normalizeKeyword)
+        .filter(Boolean);
+
+      const deduped = Array.from(new Set(normalized));
+      if (deduped.length > 0) {
+        return deduped.slice(0, 8);
+      }
     }
   } catch {
     // silent fallback
   }
-  // Fallback: split topic into phrase combos
-  const words = topic.split(' ').filter(w => w.length > 3);
-  return words.slice(0, 4).map((w, i) => words.slice(i, i + 2).join(' ')).filter(Boolean).slice(0, 4);
+  // Fallback: deterministic keyword expansion from topic + headlines
+  const candidates = buildFallbackKeywords(topic, headlines);
+  return candidates.slice(0, 8);
+}
+
+function normalizeKeyword(value: string): string {
+  return value
+    .replace(/["'`]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, 64);
+}
+
+function buildFallbackKeywords(topic: string, headlines: string[]): string[] {
+  const base = normalizeKeyword(topic);
+  const words = base.split(' ').filter(w => w.length > 2);
+  const twoGrams = words.map((_, i) => words.slice(i, i + 2).join(' ')).filter(s => s.split(' ').length >= 2);
+  const threeGrams = words.map((_, i) => words.slice(i, i + 3).join(' ')).filter(s => s.split(' ').length >= 3);
+
+  const headlineEntities = headlines
+    .flatMap(h => (h.match(/\b[A-Z][a-zA-Z]{2,}(?:\s+[A-Z][a-zA-Z]{2,})?\b/g) ?? []))
+    .map(normalizeKeyword)
+    .filter(Boolean)
+    .slice(0, 5);
+
+  const seeded = [
+    base,
+    ...threeGrams,
+    ...twoGrams,
+    ...headlineEntities,
+    `${base} timeline`,
+    `${base} latest updates`,
+    `${base} regional response`,
+    `rumour: ${base}`,
+  ].map(normalizeKeyword).filter(Boolean);
+
+  return Array.from(new Set(seeded));
 }
 
 // ─── Keyword fallbacks (zero-latency, no API) ─────────────────────────────────

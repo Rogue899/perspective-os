@@ -78,12 +78,13 @@ export function resetSeenUrls(): void {
 async function runSweep(): Promise<void> {
   if (_keywords.length === 0 || !_onHit) return;
 
-  // 2 fetches per keyword (Google News + Reddit only — Nitter is usually down)
+  // 3 fetches per keyword (Google News + Reddit + X-site discovery via Google RSS)
   // Run sequentially in pairs to avoid saturating the dev server connection pool
   const results = await Promise.allSettled(
     _keywords.flatMap(keyword => [
       fetchGoogleNewsHits(keyword),
       fetchRedditHits(keyword),
+      fetchXSiteHits(keyword),
     ])
   );
 
@@ -126,6 +127,22 @@ async function fetchRedditHits(keyword: string): Promise<KeywordHit[]> {
     if (!res.ok) return [];
     const xml = await res.text();
     return parseAtomEntries(xml, keyword, 'reddit');
+  } catch {
+    return [];
+  }
+}
+
+async function fetchXSiteHits(keyword: string): Promise<KeywordHit[]> {
+  const clean = stripPrefix(keyword);
+  const rssUrl = `https://news.google.com/rss/search?q=${encodeURIComponent(`site:x.com ${clean}`)}&hl=en&gl=US&ceid=US:en`;
+  const proxyUrl = `/api/rss-proxy?url=${encodeURIComponent(rssUrl)}`;
+
+  try {
+    const res = await fetch(proxyUrl, { signal: AbortSignal.timeout(6000) });
+    if (!res.ok) return [];
+    const xml = await res.text();
+    // Classified as google-news source; these are still discovered via Google RSS
+    return parseRssItems(xml, keyword, 'google-news', 'link', 'title', 'description', 'pubDate');
   } catch {
     return [];
   }

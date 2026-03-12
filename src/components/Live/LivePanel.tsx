@@ -3,9 +3,10 @@
  * YouTube 24/7 streams via channel embed + real-time RSS ticker
  */
 
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { useApp } from '../../context/AppContext';
 import { LIVE_CHANNELS, buildEmbedUrl, type GridLayout, LAYOUT_COUNTS } from '../../config/live-channels';
+import { discoverLiveChannelsForLocation } from '../../services/live-discovery';
 import { Maximize2, Minimize2, LayoutGrid, Volume2, VolumeX, RefreshCw, MessageCircle, X } from 'lucide-react';
 
 const BIAS_COLORS: Record<string, string> = {
@@ -28,7 +29,7 @@ const LAYOUT_OPTIONS: Array<{ id: GridLayout; label: string; cols: string }> = [
 
 export function LivePanel() {
   const { state, dispatch } = useApp();
-  const { clusters } = state;
+  const { clusters, locationFilter } = state;
   const [layout, setLayout] = useState<GridLayout>('2x2');
   const [muted, setMuted] = useState(true);
   const [fullscreen, setFullscreen] = useState<string | null>(null);
@@ -36,11 +37,51 @@ export function LivePanel() {
   const [enabledIds, setEnabledIds] = useState<Set<string>>(
     new Set(LIVE_CHANNELS.filter(c => c.enabled).map(c => c.id))
   );
+  const [discoveredOrder, setDiscoveredOrder] = useState<string[]>([]);
+  const [discovering, setDiscovering] = useState(false);
+  const [fallbackUsed, setFallbackUsed] = useState(false);
   const [embedKey, setEmbedKey] = useState(0); // force refresh iframes
 
+  useEffect(() => {
+    let cancelled = false;
+    if (!locationFilter) {
+      setDiscoveredOrder([]);
+      setFallbackUsed(false);
+      return;
+    }
+
+    setDiscovering(true);
+    discoverLiveChannelsForLocation({
+      lat: locationFilter.lat,
+      lng: locationFilter.lng,
+      locationName: locationFilter.name,
+      topic: clusters[0]?.headline,
+    })
+      .then(result => {
+        if (cancelled) return;
+        setDiscoveredOrder(result.channels.map(c => c.id));
+        setFallbackUsed(result.fallbackUsed);
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setDiscoveredOrder([]);
+        setFallbackUsed(true);
+      })
+      .finally(() => {
+        if (!cancelled) setDiscovering(false);
+      });
+
+    return () => { cancelled = true; };
+  }, [locationFilter?.lat, locationFilter?.lng, locationFilter?.name, clusters]);
+
   const activeChannels = useMemo(() =>
-    LIVE_CHANNELS.filter(c => enabledIds.has(c.id)).slice(0, LAYOUT_COUNTS[layout]),
-    [enabledIds, layout]
+    (locationFilter && discoveredOrder.length > 0
+      ? discoveredOrder.map(id => LIVE_CHANNELS.find(c => c.id === id)).filter((c): c is typeof LIVE_CHANNELS[number] => Boolean(c))
+      : LIVE_CHANNELS
+    )
+      .filter(c => enabledIds.has(c.id))
+      .slice(0, LAYOUT_COUNTS[layout]),
+    [enabledIds, layout, locationFilter, discoveredOrder]
   );
 
   const gridClass = LAYOUT_OPTIONS.find(l => l.id === layout)?.cols ?? 'grid-cols-2';
@@ -132,6 +173,11 @@ export function LivePanel() {
           <RefreshCw size={13} />
         </button>
         <LayoutGrid size={13} className="text-dim" />
+        {locationFilter && (
+          <span className="text-[9px] font-mono text-accent/80">
+            {discovering ? 'Discovering local channels…' : `Local: ${locationFilter.name}${fallbackUsed ? ' (fallback)' : ''}`}
+          </span>
+        )}
       </div>
 
       {/* Channel toggles */}
@@ -155,8 +201,16 @@ export function LivePanel() {
       {/* Video grid */}
       <div className={`flex-1 grid ${gridClass} gap-0.5 bg-black overflow-hidden`}>
         {activeChannels.length === 0 ? (
-          <div className="col-span-full flex items-center justify-center text-dim text-xs font-mono">
-            No channels selected
+          <div className="col-span-full flex flex-col items-center justify-center text-dim text-xs font-mono gap-2">
+            <span>No channels selected</span>
+            <a
+              href={`https://www.youtube.com/results?search_query=${encodeURIComponent(`${locationFilter?.name ?? 'world'} live news`)}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="px-2 py-1 rounded border border-border hover:border-accent/40 hover:text-white"
+            >
+              Any-source live fallback
+            </a>
           </div>
         ) : (
           activeChannels.map((ch, idx) => (
