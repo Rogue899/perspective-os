@@ -98,6 +98,85 @@ function inferGeo(text: string): { lat: number; lng: number; name: string } | un
   return undefined;
 }
 
+// ─── Phase 2: Semantic refinement via Gemini embeddings ──────────────────────
+
+async function fetchEmbedding(title: string): Promise<number[]> {
+  try {
+    const res = await fetch('/api/embed', {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body:    JSON.stringify({ text: title.slice(0, 200) }),
+    });
+    if (!res.ok) return [];
+    const data = await res.json();
+    return Array.isArray(data.embedding) ? data.embedding : [];
+  } catch {
+    return [];
+  }
+}
+
+function cosine(a: number[], b: number[]): number {
+  if (a.length === 0 || b.length !== a.length) return 0;
+  let dot = 0, normA = 0, normB = 0;
+  for (let i = 0; i < a.length; i++) {
+    dot   += a[i] * b[i];
+    normA += a[i] * a[i];
+    normB += b[i] * b[i];
+  }
+  const denom = Math.sqrt(normA) * Math.sqrt(normB);
+  return denom === 0 ? 0 : dot / denom;
+}
+
+const EMBED_SIMILARITY_THRESHOLD = 0.82;
+const PHASE2_MIN_CLUSTERS = 10; // skip Phase 2 below this count — not worth quota
+
+async function refineWithEmbeddings(clusters: StoryCluster[]): Promise<StoryCluster[]> {
+  if (clusters.length <= PHASE2_MIN_CLUSTERS) return clusters;
+
+  // Fetch all embeddings with same concurrency limiter (max 5 parallel calls)
+  const embeddingTasks = clusters.map(c => () => fetchEmbedding(c.headline));
+  const embeddings = await limitedParallel(embeddingTasks, 5);
+
+  const merged = new Set<number>(); // original indices that were absorbed
+  const result: StoryCluster[] = [];
+
+  for (let i = 0; i < clusters.length; i++) {
+    if (merged.has(i)) continue;
+
+    let base = clusters[i];
+    const embI = embeddings[i];
+    if (embI.length === 0) { result.push(base); continue; }
+
+    for (let j = i + 1; j < clusters.length; j++) {
+      if (merged.has(j)) continue;
+      const embJ = embeddings[j];
+      if (embJ.length === 0) continue;
+
+      if (cosine(embI, embJ) >= EMBED_SIMILARITY_THRESHOLD) {
+        // Merge cluster j into base — dedupe by URL
+        const seenUrls = new Set(base.articles.map(a => a.url));
+        const newArticles = clusters[j].articles.filter(a => !seenUrls.has(a.url));
+        const combined = [...base.articles, ...newArticles]
+          .sort((a, b) => b.publishedAt.getTime() - a.publishedAt.getTime());
+
+        base = {
+          ...base,
+          articles:       combined,
+          sourceIds:      [...new Set(combined.map(a => a.sourceId))],
+          updatedAt:      combined[0].publishedAt,
+          perspectiveScore: calcPerspectiveScore(combined),
+        };
+        merged.add(j);
+        console.info(`[cluster:embed] merged "${clusters[j].headline}" → "${base.headline}"`);
+      }
+    }
+
+    result.push(base);
+  }
+
+  return result;
+}
+
 // ─── Main cluster function ────────────────────────────────────────────────────
 export async function clusterArticles(articles: RawArticle[]): Promise<StoryCluster[]> {
   // Step 1: Classify articles
@@ -190,11 +269,14 @@ export async function clusterArticles(articles: RawArticle[]): Promise<StoryClus
   }
 
   // Step 3: Sort by severity + recency + perspective score
-  return clusters.sort((a, b) => {
+  clusters.sort((a, b) => {
     const sevScore: Record<string, number> = { critical: 5, high: 4, medium: 3, low: 2, info: 1 };
     const aSev = sevScore[a.severity] ?? 1;
     const bSev = sevScore[b.severity] ?? 1;
     if (aSev !== bSev) return bSev - aSev;
     return b.updatedAt.getTime() - a.updatedAt.getTime();
   });
+
+  // Step 4: Semantic refinement — merge near-duplicate clusters using embeddings
+  return refineWithEmbeddings(clusters);
 }
