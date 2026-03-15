@@ -88,8 +88,6 @@ async function handleGdelt(req, res, params) {
 }
 
 async function handleAI(req, res) {
-  // In dev, we hit Gemini directly (keys from env)
-  // For now return a stub — AI works after deploy to Vercel
   const body = await readBody(req);
   let parsed;
   try { parsed = JSON.parse(body); } catch { parsed = {}; }
@@ -98,13 +96,13 @@ async function handleAI(req, res) {
   const GROQ_KEY   = process.env.GROQ_API_KEY   || process.env.VITE_GROQ_API_KEY;
 
   if (!GEMINI_KEY && !GROQ_KEY) {
-    // Return keyword-only stub so UI still renders
+    // No keys configured — return stub so UI still renders without crashing
     res.writeHead(200, { ...cors(), 'Content-Type': 'application/json' });
     res.end(JSON.stringify({ text: '{}', provider: 'none', cached: false }));
     return;
   }
 
-  // Try Groq if available (easier to set up for local dev)
+  // Tier 1: Groq (fast, good for dev)
   if (GROQ_KEY) {
     try {
       const groqRes = await fetch('https://api.groq.com/openai/v1/chat/completions', {
@@ -131,8 +129,40 @@ async function handleAI(req, res) {
     }
   }
 
-  res.writeHead(200, { ...cors(), 'Content-Type': 'application/json' });
-  res.end(JSON.stringify({ text: '{}', provider: 'none', cached: false }));
+  // Tier 2: Gemini (flash-lite for classify, flash for perspective analysis)
+  if (GEMINI_KEY) {
+    const tier  = parsed.tier || 'flash';
+    const model = tier === 'flash-lite' ? 'gemini-2.0-flash-lite' : 'gemini-2.5-flash';
+    try {
+      const gemRes = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${GEMINI_KEY}`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            contents: [{ role: 'user', parts: [{ text: parsed.prompt }] }],
+            ...(parsed.systemPrompt ? { systemInstruction: { parts: [{ text: parsed.systemPrompt }] } } : {}),
+            generationConfig: { maxOutputTokens: parsed.maxTokens || 800, temperature: 0.2 },
+          }),
+          signal: AbortSignal.timeout(25000),
+        }
+      );
+      if (!gemRes.ok) {
+        const err = await gemRes.json().catch(() => ({}));
+        throw new Error(`Gemini ${gemRes.status}: ${err?.error?.message ?? 'unknown'}`);
+      }
+      const data = await gemRes.json();
+      const text = data.candidates?.[0]?.content?.parts?.[0]?.text ?? '{}';
+      res.writeHead(200, { ...cors(), 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ text, provider: `gemini-${model}`, cached: false }));
+      return;
+    } catch (e) {
+      console.warn('[ai] Gemini failed:', e.message);
+    }
+  }
+
+  res.writeHead(503, { ...cors(), 'Content-Type': 'application/json' });
+  res.end(JSON.stringify({ error: 'All AI providers failed. Check GEMINI_API_KEY or GROQ_API_KEY in .env.local' }));
 }
 
 async function handleFinance(_req, res, params) {
