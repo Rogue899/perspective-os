@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback, useRef } from 'react';
+import { useEffect, useState, useCallback, useRef, useMemo } from 'react';
 import { useApp } from '../../context/AppContext';
 import { StoryCard, StoryGridCard } from './StoryCard';
 import { getAllSources, getSourceById } from '../../config/sources';
@@ -10,7 +10,7 @@ import { detectUserLocation } from '../../services/geo';
 import type { GeoContext } from '../../services/geo';
 import { getAllCircuitStates, type CircuitState } from '../../services/circuit-breaker';
 import { generateKeywords } from '../../services/ai';
-import { Filter, Wifi, WifiOff, MapPin, X, Zap, AlertTriangle, Sparkles, Radio, LayoutList, LayoutGrid, Globe, MessageCircle } from 'lucide-react';
+import { Filter, Wifi, WifiOff, MapPin, X, Zap, AlertTriangle, Sparkles, Radio, LayoutList, LayoutGrid, Globe, MessageCircle, Flame } from 'lucide-react';
 import type { EventCategory } from '../../types';
 
 const CATEGORIES: Array<{ key: string; id: EventCategory | 'all'; label: string; gdelt?: boolean }> = [
@@ -501,6 +501,20 @@ export function FeedPanel({ onRefresh, defaultGrid, hideGridControls }: { onRefr
     .filter(c => Date.now() - new Date(c.articles[0]?.publishedAt ?? 0).getTime() < 30 * 60 * 1000)
     .slice(0, 12);
 
+  // Hot Zones — geo entities that appear in 3+ clusters (focal point detection)
+  const hotZones = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const c of clusters) {
+      if (c.focalEntityName) {
+        counts.set(c.focalEntityName, (counts.get(c.focalEntityName) ?? 0) + 1);
+      }
+    }
+    return [...counts.entries()]
+      .map(([name, count]) => ({ name, count }))
+      .sort((a, b) => b.count - a.count)
+      .slice(0, 8);
+  }, [clusters]);
+
   return (
     <div className="flex flex-col h-full">
       {/* Rolling breaking strip — visible only in grid/feed mode, only when there are recent items */}
@@ -526,6 +540,29 @@ export function FeedPanel({ onRefresh, defaultGrid, hideGridControls }: { onRefr
                 </button>
               ))}
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Hot Zones strip — geo entities dominating the news cycle */}
+      {hotZones.length > 0 && (
+        <div className="shrink-0 border-b border-orange-500/20 bg-orange-500/5 px-3 py-1 flex items-center gap-2 overflow-x-auto scrollbar-hide">
+          <div className="shrink-0 flex items-center gap-1 text-[9px] font-mono text-orange-400 uppercase tracking-widest">
+            <Flame size={9} className="shrink-0" />
+            <span className="hidden sm:inline">Hot Zones</span>
+          </div>
+          <div className="flex items-center gap-1.5 flex-nowrap">
+            {hotZones.map(({ name, count }) => (
+              <button
+                key={name}
+                onClick={() => dispatch({ type: 'SET_LOCATION_FILTER', payload: { lat: 0, lng: 0, name } })}
+                className="shrink-0 flex items-center gap-1 text-[9px] font-mono text-orange-200 bg-orange-500/10 hover:bg-orange-500/20 border border-orange-500/25 px-1.5 py-0.5 rounded transition-colors"
+                title={`${count} stories about ${name}`}
+              >
+                {name}
+                <span className="text-orange-400/70">{count}</span>
+              </button>
+            ))}
           </div>
         </div>
       )}

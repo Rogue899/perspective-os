@@ -70,6 +70,8 @@ export interface StoryCluster {
   perspectiveScore: number;     // 0-1: how much do sources diverge?
   hasAnalysis: boolean;         // has Perspective Engine run?
   analysis?: PerspectiveAnalysis;
+  isFocalPoint?: boolean;       // true if this geo entity appears in 3+ clusters
+  focalEntityName?: string;     // the geo name that made it a focal point
 }
 
 // ─── Perspective Engine output ────────────────────────────────────────────────

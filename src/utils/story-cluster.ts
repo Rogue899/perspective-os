@@ -8,6 +8,7 @@
 import type { RawArticle, ScoredArticle, StoryCluster } from '../types';
 import { classifyWithAI, classifyWithKeywords } from '../services/ai';
 import { getSourceById } from '../config/sources';
+import { detectFocalPoints } from './focal-points';
 
 // ─── Concurrency limiter — prevents 750 parallel HTTP calls ───────────────────
 async function limitedParallel<T>(
@@ -278,5 +279,8 @@ export async function clusterArticles(articles: RawArticle[]): Promise<StoryClus
   });
 
   // Step 4: Semantic refinement — merge near-duplicate clusters using embeddings
-  return refineWithEmbeddings(clusters);
+  const refined = await refineWithEmbeddings(clusters);
+
+  // Step 5: Focal point detection — mark hot zones (geo appearing in 3+ clusters)
+  return detectFocalPoints(refined).clusters;
 }

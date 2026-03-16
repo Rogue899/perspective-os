@@ -1,7 +1,7 @@
 import type { StoryCluster } from '../../types';
 import { getSourceById, getBiasTextClass, getBiasBgClass } from '../../config/sources';
 import { useApp } from '../../context/AppContext';
-import { AlertTriangle, Eye, Clock, ShieldAlert } from 'lucide-react';
+import { AlertTriangle, Eye, Clock, ShieldAlert, Flame } from 'lucide-react';
 
 const SEVERITY_TOP: Record<string, string> = {
   critical: 'border-t-red-500',
@@ -59,6 +59,11 @@ export function StoryGridCard({ cluster }: { cluster: StoryCluster }) {
         <span className="text-[8px] font-mono text-dim bg-white/5 px-1 py-0.5 rounded uppercase tracking-wider">
           {cluster.category}
         </span>
+        {cluster.isFocalPoint && cluster.focalEntityName && (
+          <span title={`${cluster.focalEntityName} — hot zone`} className="flex items-center gap-0.5 text-[8px] font-mono text-orange-300 bg-orange-500/10 px-1 py-0.5 rounded border border-orange-500/20 uppercase tracking-wider">
+            <Flame size={7} /> {cluster.focalEntityName}
+          </span>
+        )}
         {perspectiveHigh && (
           <span title="High bias divergence" className="ml-auto shrink-0">
             <Eye size={9} className={sevText} />
@@ -137,6 +142,11 @@ export function StoryCard({ cluster }: { cluster: StoryCluster }) {
         {hasUnverifiedLane && (
           <span className="flex items-center gap-1 text-[9px] font-mono text-amber-300 bg-amber-500/10 px-1.5 py-0.5 rounded border border-amber-500/25 uppercase tracking-wider">
             <ShieldAlert size={9} /> Unverified lane
+          </span>
+        )}
+        {cluster.isFocalPoint && cluster.focalEntityName && (
+          <span className="flex items-center gap-1 text-[9px] font-mono text-orange-300 bg-orange-500/10 px-1.5 py-0.5 rounded border border-orange-500/25 uppercase tracking-wider" title={`${cluster.focalEntityName} is dominating the news cycle`}>
+            <Flame size={9} /> {cluster.focalEntityName}
           </span>
         )}
       </div>
