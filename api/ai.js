@@ -115,7 +115,7 @@ export default async function handler(req) {
 
   // ── Tier selection + fallback chain ───────────────────────────────────────
   const GEMINI_FLASH_LITE = 'gemini-2.0-flash-lite';
-  const GEMINI_FLASH      = 'gemini-2.5-flash-preview-04-17';
+  const GEMINI_FLASH      = 'gemini-2.5-flash';  // stable ID (was: gemini-2.5-flash-preview-04-17)
 
   let text = null;
   let provider = null;
