@@ -46,7 +46,7 @@ export function StoryGridCard({ cluster }: { cluster: StoryCluster }) {
 
   return (
     <article
-      className={`border border-border/60 border-t-2 ${sevTop} rounded p-2.5 cursor-pointer hover:bg-white/[0.04] hover:border-accent/30 transition-colors flex flex-col gap-1.5 group bg-surface/40`}
+      className={`border border-border/60 border-t-2 ${sevTop} rounded p-2.5 cursor-pointer hover:bg-accent/[0.04] hover:border-accent/30 transition-colors flex flex-col gap-1.5 group bg-surface/40`}
       onClick={() => dispatch({ type: 'SELECT_CLUSTER', payload: cluster })}
     >
       {/* Tags row */}
@@ -72,7 +72,7 @@ export function StoryGridCard({ cluster }: { cluster: StoryCluster }) {
       </div>
 
       {/* Headline */}
-      <h3 className="text-[11px] font-medium text-white/90 leading-snug line-clamp-3 group-hover:text-white transition-colors flex-1">
+      <h3 className="text-[11px] font-medium text-fg/90 leading-snug line-clamp-3 group-hover:text-fg transition-colors flex-1">
         {cluster.headline}
       </h3>
 
@@ -121,7 +121,7 @@ export function StoryCard({ cluster }: { cluster: StoryCluster }) {
 
   return (
     <article
-      className={`border-l-2 pl-3 py-2.5 cursor-pointer hover:bg-white/[0.03] transition-colors rounded-r group ${sevColor}`}
+      className={`border-l-2 pl-3 py-2.5 cursor-pointer hover:bg-accent/[0.04] transition-colors rounded-r group ${sevColor}`}
       onClick={() => dispatch({ type: 'SELECT_CLUSTER', payload: cluster })}
     >
       {/* Severity + category tags */}
@@ -152,7 +152,7 @@ export function StoryCard({ cluster }: { cluster: StoryCluster }) {
       </div>
 
       {/* Headline */}
-      <h3 className="text-sm font-medium text-white/90 leading-snug mb-2 group-hover:text-white transition-colors line-clamp-2">
+      <h3 className="text-sm font-medium text-fg/90 leading-snug mb-2 group-hover:text-fg transition-colors line-clamp-2">
         {cluster.headline}
       </h3>
 

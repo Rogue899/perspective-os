@@ -3,21 +3,28 @@
 @tailwind utilities;
 
 :root {
-  --color-bg: 10 14 10;
-  --color-surface: 17 23 17;
-  --color-border: 30 42 30;
-  --color-accent: 34 197 94;
-  --color-dim: 107 114 128;
-  --color-fg: 255 255 255;
+  /* Modern dark — neutral zinc/slate base, electric sky-blue accent */
+  /* Deliberately NOT matrix-green: no green primary, no hacker terminal feel */
+  --color-bg:      9 9 11;        /* zinc-950 */
+  --color-surface: 18 18 23;      /* slightly lighter zinc */
+  --color-border:  39 39 50;      /* zinc-800 equivalent */
+  --color-accent:  56 189 248;    /* sky-400 — readable, modern */
+  --color-dim:     100 116 139;   /* slate-500 */
+  --color-fg:      248 250 252;   /* slate-50 */
+  /* Additional semantic tokens */
+  --color-surface-2: 28 28 36;    /* card surface, slightly raised */
+  --color-accent-muted: 14 47 62; /* accent tint for backgrounds */
 }
 
 :root[data-theme='light'] {
-  --color-bg: 244 247 250;
-  --color-surface: 255 255 255;
-  --color-border: 208 217 229;
-  --color-accent: 14 165 233;
-  --color-dim: 71 85 105;
-  --color-fg: 15 23 42;
+  --color-bg:      248 250 252;   /* slate-50 */
+  --color-surface: 255 255 255;   /* white */
+  --color-border:  203 213 225;   /* slate-300 */
+  --color-accent:  2 132 199;     /* sky-600 */
+  --color-dim:     71 85 105;     /* slate-600 */
+  --color-fg:      15 23 42;      /* slate-900 */
+  --color-surface-2: 241 245 249; /* slate-100 */
+  --color-accent-muted: 224 242 254; /* sky-100 */
 }
 
 @layer base {
@@ -29,10 +36,14 @@
     padding: 0;
     background: rgb(var(--color-bg));
     color: rgb(var(--color-fg));
+    /* Use Inter for all prose/UI text; JetBrains Mono only via font-mono utility */
+    font-family: 'Inter', system-ui, sans-serif;
   }
 
   body {
     transition: background-color 180ms ease, color 180ms ease;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
   }
 
   ::-webkit-scrollbar        { width: 4px; height: 4px; }

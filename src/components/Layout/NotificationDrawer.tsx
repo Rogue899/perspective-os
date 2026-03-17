@@ -97,9 +97,9 @@ export function NotificationDrawer({ onClose }: { onClose: () => void }) {
           {/* Keyword monitor hits */}
           {keywordHits.length > 0 && (
             <div>
-              <div className="px-3 py-1.5 flex items-center gap-1.5 bg-green-500/5">
-                <Zap size={9} className="text-green-400" />
-                <span className="text-[9px] font-mono text-green-400 uppercase tracking-wider">
+              <div className="px-3 py-1.5 flex items-center gap-1.5 bg-accent/5">
+                <Zap size={9} className="text-accent" />
+                <span className="text-[9px] font-mono text-accent uppercase tracking-wider">
                   Keyword Monitor · {keywordHits.length} hits
                 </span>
               </div>
@@ -163,9 +163,9 @@ export function NotificationDrawer({ onClose }: { onClose: () => void }) {
           {/* Sports */}
           {sports.length > 0 && (
             <div>
-              <div className="px-3 py-1.5 flex items-center gap-1.5 bg-green-500/5">
-                <Trophy size={9} className="text-green-400" />
-                <span className="text-[9px] font-mono text-green-400 uppercase tracking-wider">
+              <div className="px-3 py-1.5 flex items-center gap-1.5 bg-accent/5">
+                <Trophy size={9} className="text-accent" />
+                <span className="text-[9px] font-mono text-accent uppercase tracking-wider">
                   Sports
                 </span>
               </div>

@@ -51,9 +51,24 @@ const DEFAULT_SETTINGS: AppSettings = {
   upstashUrl:           '',
   upstashToken:         '',
   localMediaSources:    [],
-  enabledSources:       NEWS_SOURCES.map(s => s.id),
+  // Default: tech/AI/finance/general sources only — users can add conflict/OSINT in settings
+  enabledSources:       [
+    // General world news (tier1, balanced)
+    'bbc', 'apnews', 'reuters', 'npr', 'cna', 'euronews', 'politicoeu',
+    // Tech / AI
+    'techcrunch', 'arstechnica', 'theverge', 'venturebeat', 'wired', 'mit-tech-review',
+    'hackernews', 'the-batch',
+    // Finance / Markets
+    'yahoo-finance', 'marketwatch', 'coindesk', 'ft-tech',
+    // MENA context
+    'aljazeera', 'arabnews',
+    // Intelligence aggregators
+    'ground-news', 'gdelt',
+    // Lebanon local
+    'the961',
+  ],
   enableMap:            true,
-  enableConflictLayer:  true,
+  enableConflictLayer:  false,
   enableFlightLayer:    false,
   aiProvider:           'gemini-flash',
   socialAuth: {
@@ -89,7 +104,7 @@ const initialState: AppState = {
   sourcesStatus:      NEWS_SOURCES.map(s => ({ id: s.id, label: s.name, status: 'loading' })),
   selectedCluster:    null,
   sidebarOpen:        false,
-  activePanel:        'map',
+  activePanel:        'news',
   watchlist:          loadWatchlist(),
   globalKeywords:     [],
   keywordHits:        [],

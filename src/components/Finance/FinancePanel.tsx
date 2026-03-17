@@ -66,6 +66,21 @@ interface EodEntry {
   exchange: string;
 }
 
+interface FxEntry {
+  symbol: string;
+  close: number;
+  open: number;
+  date: string;
+}
+
+const FX_LABELS: Record<string, { name: string; base: string; quote: string }> = {
+  EURUSD: { name: 'Euro', base: 'EUR', quote: 'USD' },
+  GBPUSD: { name: 'Pound', base: 'GBP', quote: 'USD' },
+  USDJPY: { name: 'Yen', base: 'USD', quote: 'JPY' },
+  USDCNY: { name: 'Yuan', base: 'USD', quote: 'CNY' },
+  USDTRY: { name: 'Lira', base: 'USD', quote: 'TRY' },
+};
+
 // Key equity watchlist — sectors relevant to geopolitical signals
 const EOD_SYMBOLS = 'AAPL,MSFT,NVDA,GOOGL,LMT,RTX,XOM,CVX,JPM,GS';
 const SESSION_KEY_EOD = 'pos:eod:v1';
@@ -135,6 +150,7 @@ export function FinancePanel() {
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
   const [eodData, setEodData] = useState<EodEntry[]>([]);
   const [eodLoading, setEodLoading] = useState(false);
+  const [fxData, setFxData] = useState<FxEntry[]>([]);
   const [fredIndicators, setFredIndicators] = useState<Array<{
     id: string; label: string; latest: number | null; date: string; change: number | null;
   }>>([]);
@@ -208,6 +224,14 @@ export function FinancePanel() {
 
   // Fetch EOD once on mount
   useEffect(() => { fetchEod(); }, [fetchEod]);
+
+  // Fetch FX rates once on mount
+  useEffect(() => {
+    fetch('/api/finance?type=fx')
+      .then(r => r.json())
+      .then(data => setFxData(data.fx ?? []))
+      .catch(() => {});
+  }, []);
 
   // Fetch FRED economic indicators once on mount (cached 6h server-side)
   useEffect(() => {
@@ -374,6 +398,40 @@ IMPORTANT: End with a disclaimer that this is AI analysis only, not financial ad
                 ))}
               </div>
             </div>
+
+            {/* Forex — MarketStack */}
+            {fxData.length > 0 && (
+              <div>
+                <h3 className="text-[10px] font-mono text-dim mb-2 uppercase tracking-widest">
+                  Forex
+                  <span className="ml-1.5 text-[8px] normal-case font-normal text-dim/50">via MarketStack · EOD</span>
+                </h3>
+                <div className="grid grid-cols-2 lg:grid-cols-3 gap-2">
+                  {fxData.map(fx => {
+                    const chg = fx.open > 0 ? ((fx.close - fx.open) / fx.open * 100) : null;
+                    const up = chg !== null ? chg >= 0 : null;
+                    const meta = FX_LABELS[fx.symbol];
+                    return (
+                      <div key={fx.symbol} className="bg-surface border border-border rounded p-2 flex flex-col gap-1">
+                        <div className="flex items-center justify-between">
+                          <span className="text-[10px] font-mono text-white font-semibold">{fx.symbol.slice(0,3)}/{fx.symbol.slice(3)}</span>
+                          {meta && <span className="text-[8px] font-mono text-dim/60">{meta.name}</span>}
+                        </div>
+                        <div className="text-[11px] font-mono text-white">
+                          {fx.close.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 4 })}
+                        </div>
+                        {chg !== null && (
+                          <div className={`text-[10px] font-mono flex items-center gap-0.5 ${up ? 'text-green-400' : 'text-red-400'}`}>
+                            <ChangeArrow change={chg} />
+                            {chg > 0 ? '+' : ''}{chg.toFixed(3)}%
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
 
             {/* Equities — MarketStack EOD */}
             <div>

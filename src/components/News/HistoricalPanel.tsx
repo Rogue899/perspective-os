@@ -72,6 +72,32 @@ function buildLocalHistoryFallback(params: {
   ].join('\n');
 }
 
+interface TonePoint { date: string; value: number; }
+interface FrameShift { detected: boolean; delta: number; direction: 'positive' | 'negative'; }
+
+function ToneSparkline({ points }: { points: TonePoint[] }) {
+  if (points.length < 2) return null;
+  const values = points.map(p => p.value);
+  const min = Math.min(...values);
+  const max = Math.max(...values);
+  const range = max - min || 1;
+  const W = 120, H = 30, pad = 2;
+  const xi = (i: number) => pad + (i / (points.length - 1)) * (W - 2 * pad);
+  const yi = (v: number) => H - pad - ((v - min) / range) * (H - 2 * pad);
+  // zero-line y coordinate (clamped)
+  const zero = Math.max(pad, Math.min(H - pad, yi(0)));
+  const pathD = points.map((p, i) => `${i === 0 ? 'M' : 'L'}${xi(i).toFixed(1)},${yi(p.value).toFixed(1)}`).join(' ');
+  const lastVal = values[values.length - 1];
+  const lineColor = lastVal < -3 ? '#f87171' : lastVal > 2 ? '#4ade80' : '#38bdf8';
+  return (
+    <svg width={W} height={H} viewBox={`0 0 ${W} ${H}`} className="rounded overflow-hidden shrink-0">
+      <line x1={pad} y1={zero} x2={W - pad} y2={zero} stroke="rgba(255,255,255,0.08)" strokeWidth="0.5" />
+      <path d={pathD} fill="none" stroke={lineColor} strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
+      <circle cx={xi(points.length - 1)} cy={yi(lastVal)} r="2" fill={lineColor} />
+    </svg>
+  );
+}
+
 export function HistoricalPanel({
   cluster,
   onClose,
@@ -88,6 +114,8 @@ export function HistoricalPanel({
   const [narrativeShift, setNarrativeShift] = useState<Array<{ when: string; summary: string }>>([]);
   const [externalSnippets, setExternalSnippets] = useState<ExternalSnippet[]>([]);
   const [snippetsLoading, setSnippetsLoading] = useState(false);
+  const [toneTimeline, setToneTimeline] = useState<TonePoint[]>([]);
+  const [frameShift, setFrameShift] = useState<FrameShift | null>(null);
 
   const searchTerms = extractSearchTerms(cluster);
 
@@ -99,6 +127,8 @@ export function HistoricalPanel({
     setNarrativeShift([]);
     setExternalSnippets([]);
     setAiSummary('');
+    setToneTimeline([]);
+    setFrameShift(null);
     setLoading(true);
     setSnippetsLoading(true);
 
@@ -197,6 +227,42 @@ export function HistoricalPanel({
       } catch {
         /* noop */
       }
+
+      // ── GDELT Tone Timeline + Frame Shift Detection ───────────────────────────
+      try {
+        const query = searchTerms.length > 0
+          ? searchTerms.join(' ')
+          : cluster.headline.split(' ').slice(0, 6).join(' ');
+        const toneParams = new URLSearchParams({
+          query,
+          mode: 'tonechart',
+          timespan: '30d',
+          format: 'json',
+        });
+        const toneRes = await fetch(`/api/gdelt/doc?${toneParams}`);
+        if (toneRes.ok) {
+          const toneData = await toneRes.json();
+          const raw: any[] = toneData.tonechart ?? [];
+          const points: TonePoint[] = raw
+            .map(p => ({ date: String(p.date ?? '').slice(0, 8), value: Number(p.value ?? 0) }))
+            .filter(p => p.date.length === 8 && !isNaN(p.value));
+          if (!cancelled && points.length >= 2) {
+            setToneTimeline(points);
+            // Frame shift: compare first-third vs last-third average tone
+            const third = Math.max(1, Math.ceil(points.length / 3));
+            const firstAvg = points.slice(0, third).reduce((s, p) => s + p.value, 0) / third;
+            const lastAvg = points.slice(-third).reduce((s, p) => s + p.value, 0) / third;
+            const delta = lastAvg - firstAvg;
+            if (!cancelled) {
+              setFrameShift({
+                detected: Math.abs(delta) > 2.5,
+                delta,
+                direction: delta >= 0 ? 'positive' : 'negative',
+              });
+            }
+          }
+        }
+      } catch { /* noop */ }
 
       try {
         const primaryUrl = cluster.articles[0]?.url;
@@ -395,6 +461,43 @@ Be factual, avoid bias, and mark uncertainty clearly.`;
                 <p className="text-[9px] font-mono text-dim/50 mt-2">
                   AI-generated — verify with primary sources
                 </p>
+              </div>
+            )}
+
+            {/* Tone Timeline + Frame Shift Badge */}
+            {toneTimeline.length >= 2 && (
+              <div className="px-4 py-4">
+                <div className="flex items-center justify-between mb-2.5">
+                  <h4 className="text-[11px] font-mono uppercase tracking-wider text-orange-300 flex items-center gap-1.5">
+                    Media Tone
+                    <span className="text-[8px] text-dim font-normal normal-case">30d GDELT</span>
+                  </h4>
+                  {frameShift?.detected && (
+                    <span className={`text-[9px] font-mono px-1.5 py-0.5 rounded border ${
+                      frameShift.direction === 'positive'
+                        ? 'text-green-400 border-green-500/40 bg-green-500/10'
+                        : 'text-red-400 border-red-500/40 bg-red-500/10'
+                    }`}>
+                      ⚡ FRAME SHIFT {frameShift.direction === 'positive' ? '↑' : '↓'}
+                    </span>
+                  )}
+                </div>
+                <div className="flex items-center gap-3">
+                  <ToneSparkline points={toneTimeline} />
+                  <div className="space-y-0.5">
+                    <p className="text-[9px] font-mono text-dim">
+                      {toneTimeline.length} tone samples
+                    </p>
+                    {frameShift && (
+                      <p className="text-[9px] font-mono text-dim">
+                        Δ {frameShift.delta > 0 ? '+' : ''}{frameShift.delta.toFixed(1)} over 30d
+                      </p>
+                    )}
+                    <p className="text-[8px] text-dim/40 font-mono">
+                      negative = hostile framing
+                    </p>
+                  </div>
+                </div>
               </div>
             )}
 

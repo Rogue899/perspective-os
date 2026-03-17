@@ -47,10 +47,10 @@ export function Header({ onRefresh, onSettings, onNotifications }: HeaderProps) 
 
   return (
     <header className="h-11 bg-surface border-b border-border flex items-center justify-between px-3 shrink-0 z-50 gap-2">
-      {/* Logo */}
+      {/* Logo — keeps mono for the brand wordmark */}
       <div className="flex items-center gap-2 shrink-0">
         <span className="text-accent font-mono font-semibold text-sm tracking-wider">
-          PERSPECTIVE<span className="text-white/40">OS</span>
+          PERSPECTIVE<span className="text-fg/40">OS</span>
         </span>
         <span className="hidden lg:block text-[9px] text-dim font-mono border border-border px-1 py-0.5 rounded">
           v0.2
@@ -63,10 +63,10 @@ export function Header({ onRefresh, onSettings, onNotifications }: HeaderProps) 
           <button
             key={p.id}
             onClick={() => dispatch({ type: 'SET_ACTIVE_PANEL', payload: p.id })}
-            className={`relative flex items-center gap-1 px-2.5 py-1.5 rounded text-[11px] font-mono whitespace-nowrap transition-colors ${
+            className={`relative flex items-center gap-1 px-2.5 py-1.5 rounded text-[12px] font-medium whitespace-nowrap transition-colors ${
               activePanel === p.id
                 ? 'bg-accent/10 text-accent border border-accent/30'
-                : 'text-dim hover:text-white hover:bg-white/5'
+                : 'text-dim hover:text-fg hover:bg-white/5'
             }`}
           >
             {p.icon}
@@ -90,7 +90,7 @@ export function Header({ onRefresh, onSettings, onNotifications }: HeaderProps) 
         <button
           onClick={onRefresh}
           disabled={loading}
-          className="flex items-center gap-1 text-dim hover:text-white transition-colors disabled:opacity-40"
+          className="flex items-center gap-1 text-dim hover:text-fg transition-colors disabled:opacity-40"
           title="Refresh feeds"
         >
           <RefreshCw size={13} className={loading ? 'animate-spin text-accent' : ''} />
@@ -98,7 +98,7 @@ export function Header({ onRefresh, onSettings, onNotifications }: HeaderProps) 
         {onNotifications && (
           <button
             onClick={onNotifications}
-            className="relative text-dim hover:text-white transition-colors"
+            className="relative text-dim hover:text-fg transition-colors"
             title="Notifications"
           >
             <Bell size={13} />
@@ -111,14 +111,14 @@ export function Header({ onRefresh, onSettings, onNotifications }: HeaderProps) 
         )}
         <button
           onClick={() => setTheme(prev => (prev === 'dark' ? 'light' : 'dark'))}
-          className="text-dim hover:text-white transition-colors"
+          className="text-dim hover:text-fg transition-colors"
           title={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
         >
           {theme === 'dark' ? <Sun size={13} /> : <Moon size={13} />}
         </button>
         <button
           onClick={onSettings}
-          className="text-dim hover:text-white transition-colors"
+          className="text-dim hover:text-fg transition-colors"
           title="Settings"
         >
           <Settings size={13} />

@@ -9,6 +9,7 @@ export default {
         border:  'rgb(var(--color-border) / <alpha-value>)',
         accent:  'rgb(var(--color-accent) / <alpha-value>)',
         dim:     'rgb(var(--color-dim) / <alpha-value>)',
+        fg:      'rgb(var(--color-fg) / <alpha-value>)',
         // Bias colors
         right:   '#ef4444',
         left:    '#3b82f6',
@@ -18,6 +19,7 @@ export default {
         osint:   '#06b6d4',
       },
       fontFamily: {
+        sans: ['Inter', 'system-ui', 'sans-serif'],
         mono: ['JetBrains Mono', 'Fira Code', 'monospace'],
       },
       animation: {

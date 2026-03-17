@@ -5,6 +5,29 @@
  */
 import http from 'http';
 import { URL } from 'url';
+import { readFileSync, existsSync } from 'fs';
+import { resolve, dirname } from 'path';
+import { fileURLToPath } from 'url';
+
+// Load .env and .env.local into process.env (mirrors what Vite does for VITE_* vars,
+// but here we need all vars server-side — keys like GEMINI_API_KEY, GROQ_API_KEY, etc.)
+const __dir = dirname(fileURLToPath(import.meta.url));
+function loadEnvFile(filename, override = false) {
+  const p = resolve(__dir, filename);
+  if (!existsSync(p)) return;
+  const lines = readFileSync(p, 'utf8').split('\n');
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith('#')) continue;
+    const eq = trimmed.indexOf('=');
+    if (eq < 1) continue;
+    const key = trimmed.slice(0, eq).trim();
+    const val = trimmed.slice(eq + 1).trim().replace(/^["']|["']$/g, '');
+    if (key && val && (override || !process.env[key])) process.env[key] = val;
+  }
+}
+loadEnvFile('.env');
+loadEnvFile('.env.local', true); // .env.local overrides .env
 
 const PORT = 3001;
 
@@ -165,12 +188,39 @@ async function handleAI(req, res) {
   res.end(JSON.stringify({ error: 'All AI providers failed. Check GEMINI_API_KEY or GROQ_API_KEY in .env.local' }));
 }
 
+const YAHOO_BASE = 'https://query1.finance.yahoo.com/v8/finance/chart';
+const YAHOO_SYMBOLS = ['^GSPC','^DJI','^IXIC','^VIX','GC=F','SI=F','PL=F','HG=F','CL=F','BZ=F','NG=F','ZW=F','DX-Y.NYB'];
+const FRED_SERIES = {
+  FEDFUNDS: 'Fed Funds Rate', T10YIE: '10Y Breakeven Inflation', DGS10: '10Y Treasury Yield',
+  CPIAUCSL: 'CPI (Inflation)', UNRATE: 'Unemployment Rate',
+  DEXUSEU: 'EUR/USD', GOLDAMGBD228NLBM: 'Gold (London Fix)',
+};
+
+async function fetchYahooQuote(symbol) {
+  const r = await fetch(`${YAHOO_BASE}/${encodeURIComponent(symbol)}?interval=1d&range=5d`, {
+    headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36', 'Accept': 'application/json' },
+    signal: AbortSignal.timeout(8000),
+  });
+  if (!r.ok) return null;
+  const json = await r.json();
+  const meta = json?.chart?.result?.[0]?.meta;
+  if (!meta) return null;
+  return {
+    symbol, name: meta.longName ?? meta.shortName ?? symbol,
+    price: meta.regularMarketPrice ?? null,
+    prev: meta.chartPreviousClose ?? meta.previousClose ?? null,
+    change: meta.regularMarketPrice && meta.chartPreviousClose
+      ? ((meta.regularMarketPrice - meta.chartPreviousClose) / meta.chartPreviousClose * 100) : null,
+    currency: meta.currency ?? 'USD', marketState: meta.marketState ?? 'CLOSED',
+  };
+}
+
 async function handleFinance(_req, res, params) {
   const type = params.get('type') || 'quotes';
   try {
     let data = {};
     if (type === 'crypto') {
-      const ids = params.get('ids') || 'bitcoin,ethereum';
+      const ids = params.get('ids') || 'bitcoin,ethereum,solana,ripple';
       const r = await fetch(
         `https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&ids=${ids}&order=market_cap_desc&per_page=10&page=1`,
         { headers: { 'Accept': 'application/json' }, signal: AbortSignal.timeout(10000) }
@@ -183,8 +233,57 @@ async function handleFinance(_req, res, params) {
       );
       const raw = r.ok ? await r.json() : [];
       data = { markets: raw.map(m => ({ id: m.id, question: m.question, outcomePrices: m.outcomePrices, outcomes: m.outcomes, volume24hr: m.volume24hr || 0 })) };
+    } else if (type === 'quotes') {
+      const results = await Promise.allSettled(YAHOO_SYMBOLS.map(fetchYahooQuote));
+      data = { quotes: results.filter(r => r.status === 'fulfilled' && r.value).map(r => r.value) };
+    } else if (type === 'fred_all') {
+      const results = await Promise.allSettled(
+        Object.keys(FRED_SERIES).map(async id => {
+          const r = await fetch(`https://fred.stlouisfed.org/graph/fredgraph.csv?id=${encodeURIComponent(id)}`, {
+            headers: { 'User-Agent': 'PerspectiveOS/1.0' }, signal: AbortSignal.timeout(8000),
+          });
+          if (!r.ok) return null;
+          const csv = await r.text();
+          const lines = csv.trim().split('\n').slice(1);
+          const last2 = lines.slice(-2).map(l => {
+            const [date, value] = l.split(',');
+            return { date: date?.trim(), value: value?.trim() === '.' ? null : Number(value?.trim()) };
+          });
+          const latest = last2[last2.length - 1];
+          const prev = last2.length > 1 ? last2[0] : null;
+          const change = (latest?.value != null && prev?.value != null)
+            ? ((latest.value - prev.value) / Math.abs(prev.value) * 100) : null;
+          return { id, label: FRED_SERIES[id], latest: latest?.value, date: latest?.date, change };
+        })
+      );
+      data = { indicators: results.filter(r => r.status === 'fulfilled' && r.value).map(r => r.value) };
+    } else if (type === 'fx') {
+      const msKey = process.env.MARKETSTACK_API_KEY;
+      if (!msKey) {
+        data = { fx: [], disabled: true, reason: 'MARKETSTACK_API_KEY missing' };
+      } else {
+        const FX_SYMS = 'EURUSD,GBPUSD,USDJPY,USDCNY,USDTRY';
+        const r = await fetch(`https://api.marketstack.com/v2/eod/latest?access_key=${msKey}&symbols=${FX_SYMS}`, {
+          headers: { 'User-Agent': 'PerspectiveOS/1.0' }, signal: AbortSignal.timeout(10000),
+        });
+        const json = r.ok ? await r.json() : { data: [] };
+        data = { fx: json.data ?? [] };
+      }
+    } else if (type === 'eod') {
+      const msKey = process.env.MARKETSTACK_API_KEY;
+      if (!msKey) {
+        data = { eod: [], disabled: true, reason: 'MARKETSTACK_API_KEY missing' };
+      } else {
+        const symbolParam = params.get('symbols') ?? params.get('symbol') ?? 'AAPL';
+        const symbols = symbolParam.split(',').slice(0, 10).join(',');
+        const limit = params.get('limit') ?? '2';
+        const r = await fetch(`https://api.marketstack.com/v2/eod?access_key=${msKey}&symbols=${encodeURIComponent(symbols)}&limit=${limit}`, {
+          headers: { 'User-Agent': 'PerspectiveOS/1.0' }, signal: AbortSignal.timeout(10000),
+        });
+        const json = r.ok ? await r.json() : { data: [] };
+        data = { eod: json.data ?? [] };
+      }
     } else {
-      // Yahoo Finance quotes stub for local dev
       data = { quotes: [] };
     }
     res.writeHead(200, { ...cors(), 'Content-Type': 'application/json', 'Cache-Control': 'public, max-age=60' });

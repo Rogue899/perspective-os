@@ -47,8 +47,8 @@ export async function fetchGdeltEvents(bbox?: {
 }): Promise<GdeltEvent[]> {
   try {
     const query = bbox
-      ? `conflict war attack bomb strike ${bboxQuery(bbox)}`
-      : 'conflict war attack bomb missile';
+      ? `technology AI finance economy startup ${bboxQuery(bbox)}`
+      : 'technology AI finance economy startup innovation';
 
     const params = new URLSearchParams({
       query,
