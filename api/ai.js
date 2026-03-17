@@ -131,7 +131,8 @@ export default async function handler(req) {
   }
 
   // Tier 2: Flash (perspective analysis — deeper, slower)
-  if (!text && tier === 'flash' && geminiKey) {
+  // Also runs as fallback when flash-lite fails (tier escalation)
+  if (!text && (tier === 'flash' || tier === 'flash-lite') && geminiKey) {
     try {
       text     = await callGemini(prompt, systemPrompt, GEMINI_FLASH, maxTokens, geminiKey);
       provider = 'gemini-flash';
