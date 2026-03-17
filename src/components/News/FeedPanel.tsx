@@ -103,6 +103,7 @@ export function FeedPanel({ onRefresh, defaultGrid, hideGridControls }: { onRefr
   const [minSources, setMinSources] = useState(1);
   const [online, setOnline] = useState(navigator.onLine);
   const [gdeltCount, setGdeltCount] = useState(0);
+  const [toneBaseline, setToneBaseline] = useState<{ mean: number; stdDev: number; count: number; currentAvg: number } | null>(null);
   const [geo, setGeo] = useState<GeoContext | null>(null);
   const [geoLoading, setGeoLoading] = useState(false);
   const [geoActive, setGeoActive] = useState(false);
@@ -115,7 +116,7 @@ export function FeedPanel({ onRefresh, defaultGrid, hideGridControls }: { onRefr
   const [analysisTopic, setAnalysisTopic] = useState<string | null>(null);
   const [analysisAnswer, setAnalysisAnswer] = useState<string>('');
   const [hitsExpanded, setHitsExpanded] = useState(false);
-  const [gridCols, setGridCols] = useState(2); // 2–4 columns in grid view
+  const [gridCols, setGridCols] = useState(defaultGrid ? 4 : 2); // Feed mode: 4 cols default; map sidebar: 2
   const allSources = getAllSources();
   const enabledSourceIds = (settings.enabledSources.length ? settings.enabledSources : allSources.map(s => s.id))
     .filter(id => {
@@ -203,9 +204,29 @@ export function FeedPanel({ onRefresh, defaultGrid, hideGridControls }: { onRefr
           const converted = gdeltToRaw(raw, filter);
           enriched = converted.length;
           rssArticles.push(...converted);
+
+          // Welford tone baseline — fire-and-forget, never blocks feed render
+          const tones = raw.filter(a => typeof a.tone === 'number').map(a => a.tone as number);
+          if (tones.length > 0) {
+            const currentAvg = tones.reduce((s, t) => s + t, 0) / tones.length;
+            fetch('/api/tone-baseline', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ topic: gdeltTopic, tones }),
+            })
+              .then(r => r.ok ? r.json() : null)
+              .then(data => {
+                if (data && typeof data.mean === 'number') {
+                  setToneBaseline({ mean: data.mean, stdDev: data.stdDev, count: data.count, currentAvg });
+                }
+              })
+              .catch(() => { /* baseline is optional */ });
+          }
         } catch (e) {
           console.warn('[Feed] GDELT enrichment failed:', e);
         }
+      } else {
+        setToneBaseline(null);
       }
       setGdeltCount(enriched);
 
@@ -526,7 +547,7 @@ export function FeedPanel({ onRefresh, defaultGrid, hideGridControls }: { onRefr
           </div>
           <div className="flex-1 overflow-hidden">
             <div
-              className="flex gap-6 text-[10px] font-mono text-white/80 whitespace-nowrap animate-[scroll_40s_linear_infinite]"
+              className="flex gap-6 text-[10px] font-mono text-fg/80 whitespace-nowrap animate-[scroll_40s_linear_infinite]"
               style={{ animation: `ticker ${Math.max(20, breakingClusters.length * 8)}s linear infinite` }}
             >
               {[...breakingClusters, ...breakingClusters].map((c, i) => (
@@ -573,12 +594,12 @@ export function FeedPanel({ onRefresh, defaultGrid, hideGridControls }: { onRefr
           <div className="flex items-center gap-1.5 text-[10px] font-mono">
             <MapPin size={10} className="text-accent" />
             <span className="text-accent font-semibold">Map filter:</span>
-            <span className="text-white">{locationFilter.name}</span>
+            <span className="text-fg">{locationFilter.name}</span>
             <span className="text-dim">— showing nearby stories</span>
           </div>
           <button
             onClick={() => dispatch({ type: 'SET_LOCATION_FILTER', payload: null })}
-            className="text-dim hover:text-white text-[10px] font-mono flex items-center gap-0.5"
+            className="text-dim hover:text-fg text-[10px] font-mono flex items-center gap-0.5"
             title="Clear map filter, show all stories"
           >
             <X size={10} />
@@ -597,6 +618,21 @@ export function FeedPanel({ onRefresh, defaultGrid, hideGridControls }: { onRefr
               <Zap size={9} />+{gdeltCount} GDELT
             </span>
           )}
+          {(() => {
+            if (!toneBaseline || toneBaseline.stdDev < 0.5 || toneBaseline.count < 10) return null;
+            const z = (toneBaseline.currentAvg - toneBaseline.mean) / toneBaseline.stdDev;
+            if (Math.abs(z) < 1.5) return null;
+            const isNeg = z < 0;
+            return (
+              <span
+                title={`Tone z-score ${z.toFixed(1)}σ vs ${toneBaseline.count}-sample baseline (μ=${toneBaseline.mean.toFixed(1)})`}
+                className={`flex items-center gap-0.5 font-mono ${isNeg ? 'text-red-400' : 'text-emerald-400'}`}
+              >
+                <AlertTriangle size={9} />
+                TONE{isNeg ? '↓' : '↑'}{Math.abs(z).toFixed(1)}σ
+              </span>
+            );
+          })()}
         </div>
 
         {/* Near Me geo-filter button */}
@@ -607,7 +643,7 @@ export function FeedPanel({ onRefresh, defaultGrid, hideGridControls }: { onRefr
           className={`flex items-center gap-1 px-2 py-1 text-[10px] font-mono rounded border transition-colors ${
             geoActive && geo
               ? 'bg-green-500/15 text-green-400 border-green-500/40'
-              : 'text-dim border-transparent hover:text-white hover:bg-white/5'
+              : 'text-dim border-transparent hover:text-fg hover:bg-fg/5'
           }`}
         >
           <MapPin size={9} />
@@ -629,7 +665,7 @@ export function FeedPanel({ onRefresh, defaultGrid, hideGridControls }: { onRefr
             onClick={() => setViewMode('list')}
             title="List view"
             className={`px-1.5 py-1 transition-colors ${
-              viewMode === 'list' ? 'bg-accent/15 text-accent' : 'text-dim hover:text-white hover:bg-white/5'
+              viewMode === 'list' ? 'bg-accent/15 text-accent' : 'text-dim hover:text-fg hover:bg-fg/5'
             }`}
           >
             <LayoutList size={11} />
@@ -638,7 +674,7 @@ export function FeedPanel({ onRefresh, defaultGrid, hideGridControls }: { onRefr
             onClick={() => setViewMode('grid')}
             title="Grid view"
             className={`px-1.5 py-1 transition-colors ${
-              viewMode === 'grid' ? 'bg-accent/15 text-accent' : 'text-dim hover:text-white hover:bg-white/5'
+              viewMode === 'grid' ? 'bg-accent/15 text-accent' : 'text-dim hover:text-fg hover:bg-fg/5'
             }`}
           >
             <LayoutGrid size={11} />
@@ -652,14 +688,14 @@ export function FeedPanel({ onRefresh, defaultGrid, hideGridControls }: { onRefr
               onClick={() => setGridCols(c => Math.max(2, c - 1))}
               disabled={gridCols <= 2}
               title="Fewer columns"
-              className="px-1.5 py-1 text-[10px] font-mono text-dim hover:text-white hover:bg-white/5 disabled:opacity-30 transition-colors"
+              className="px-1.5 py-1 text-[10px] font-mono text-dim hover:text-fg hover:bg-fg/5 disabled:opacity-30 transition-colors"
             >−</button>
             <span className="px-1 text-[10px] font-mono text-dim">{gridCols}</span>
             <button
               onClick={() => setGridCols(c => Math.min(8, c + 1))}
               disabled={gridCols >= 8}
               title="More columns"
-              className="px-1.5 py-1 text-[10px] font-mono text-dim hover:text-white hover:bg-white/5 disabled:opacity-30 transition-colors"
+              className="px-1.5 py-1 text-[10px] font-mono text-dim hover:text-fg hover:bg-fg/5 disabled:opacity-30 transition-colors"
             >+</button>
           </div>
         )}
@@ -668,7 +704,7 @@ export function FeedPanel({ onRefresh, defaultGrid, hideGridControls }: { onRefr
         <select
           value={minSources}
           onChange={e => setMinSources(Number(e.target.value))}
-          className="text-[10px] font-mono bg-surface border border-border rounded px-1.5 py-1 text-dim hover:text-white focus:outline-none focus:border-accent"
+          className="text-[10px] font-mono bg-surface border border-border rounded px-1.5 py-1 text-dim hover:text-fg focus:outline-none focus:border-accent"
         >
           <option value={1}>Any sources</option>
           <option value={2}>2+ sources</option>
@@ -694,7 +730,7 @@ export function FeedPanel({ onRefresh, defaultGrid, hideGridControls }: { onRefr
                 }
               }}
               placeholder="Ask AI: what is happening in Lebanon now?"
-              className="flex-1 text-[10px] font-mono bg-surface border border-border rounded px-2 py-1.5 text-dim hover:text-white focus:outline-none focus:border-accent"
+              className="flex-1 text-[10px] font-mono bg-surface border border-border rounded px-2 py-1.5 text-dim hover:text-fg focus:outline-none focus:border-accent"
             />
             <button
               onClick={() => void runDiscoverySearch()}
@@ -713,7 +749,7 @@ export function FeedPanel({ onRefresh, defaultGrid, hideGridControls }: { onRefr
                   setAnalysisAnswer('');
                   void refresh(topicFromFilter(filter));
                 }}
-                className="px-2 py-1.5 text-[10px] font-mono rounded border border-border text-dim hover:text-white"
+                className="px-2 py-1.5 text-[10px] font-mono rounded border border-border text-dim hover:text-fg"
               >
                 Clear
               </button>
@@ -725,7 +761,7 @@ export function FeedPanel({ onRefresh, defaultGrid, hideGridControls }: { onRefr
             </div>
           )}
           {analysisAnswer && (
-            <div className="text-[10px] text-white/85 leading-relaxed border border-border rounded px-2 py-1.5 bg-white/[0.02] whitespace-pre-wrap">
+            <div className="text-[10px] text-fg/85 leading-relaxed border border-border rounded px-2 py-1.5 bg-fg/[0.02] whitespace-pre-wrap">
               {analysisAnswer}
             </div>
           )}
@@ -738,7 +774,7 @@ export function FeedPanel({ onRefresh, defaultGrid, hideGridControls }: { onRefr
                   className={`px-2 py-0.5 text-[9px] font-mono rounded border transition-colors ${
                     selectedKeyword === kw
                       ? 'border-accent text-accent bg-accent/10'
-                      : 'border-border text-dim hover:text-white hover:border-accent/50 hover:bg-white/5'
+                      : 'border-border text-dim hover:text-fg hover:border-accent/50 hover:bg-white/5'
                   }`}
                 >
                   {kw}
@@ -762,7 +798,7 @@ export function FeedPanel({ onRefresh, defaultGrid, hideGridControls }: { onRefr
             className={`px-2 py-0.5 text-[9px] font-mono rounded capitalize transition-colors ${
               geoScope === s
                 ? 'bg-accent/15 text-accent border border-accent/30'
-                : 'text-dim hover:text-white hover:bg-white/5'
+                : 'text-dim hover:text-fg hover:bg-fg/5'
             }`}
           >
             {s}
@@ -772,7 +808,7 @@ export function FeedPanel({ onRefresh, defaultGrid, hideGridControls }: { onRefr
           <select
             value={activeRegion}
             onChange={e => setActiveRegion(e.target.value as Region)}
-            className="ml-1 text-[9px] font-mono bg-surface border border-border rounded px-1.5 py-0.5 text-dim hover:text-white focus:outline-none focus:border-accent"
+            className="ml-1 text-[9px] font-mono bg-surface border border-border rounded px-1.5 py-0.5 text-dim hover:text-fg focus:outline-none focus:border-accent"
           >
             {REGIONS.map(r => (
               <option key={r} value={r}>{r}</option>
@@ -793,7 +829,7 @@ export function FeedPanel({ onRefresh, defaultGrid, hideGridControls }: { onRefr
             className={`relative px-2 py-1 text-[10px] font-mono rounded whitespace-nowrap transition-colors ${
               filter === cat.id
                 ? 'bg-accent/10 text-accent border border-accent/30'
-                : 'text-dim hover:text-white hover:bg-white/5'
+                : 'text-dim hover:text-fg hover:bg-fg/5'
             }`}
           >
             {cat.label}
@@ -816,7 +852,7 @@ export function FeedPanel({ onRefresh, defaultGrid, hideGridControls }: { onRefr
             className={`px-2 py-0.5 text-[9px] font-mono rounded whitespace-nowrap transition-colors ${
               sourceFilter === tab.id
                 ? 'bg-accent/10 text-accent border border-accent/30'
-                : 'text-dim hover:text-white hover:bg-white/5'
+                : 'text-dim hover:text-fg hover:bg-fg/5'
             }`}
           >
             {tab.label}
@@ -890,7 +926,7 @@ export function FeedPanel({ onRefresh, defaultGrid, hideGridControls }: { onRefr
             {selectedKeyword && (
               <button
                 onClick={() => setSelectedKeyword(null)}
-                className="ml-auto text-[9px] font-mono text-dim hover:text-white flex items-center gap-0.5"
+                className="ml-auto text-[9px] font-mono text-dim hover:text-fg flex items-center gap-0.5"
               >
                 <X size={8} /> clear
               </button>
@@ -932,7 +968,7 @@ export function FeedPanel({ onRefresh, defaultGrid, hideGridControls }: { onRefr
                             ? 'border-purple-500/40 text-purple-400 hover:border-purple-400 hover:bg-purple-500/10'
                             : isHashtag
                               ? 'border-blue-500/40 text-blue-400 hover:border-blue-400 hover:bg-blue-500/10'
-                              : 'border-border text-dim hover:text-white hover:border-accent/50 hover:bg-white/5'
+                              : 'border-border text-dim hover:text-fg hover:border-accent/50 hover:bg-white/5'
                     }`}
                   >
                     {isRumour ? '⚠ ' : isHashtag ? '# ' : ''}{display}
@@ -989,7 +1025,7 @@ export function FeedPanel({ onRefresh, defaultGrid, hideGridControls }: { onRefr
                   >
                     <span className="text-[10px] shrink-0 mt-0.5">{sourceIcon}</span>
                     <div className="min-w-0 flex-1">
-                      <p className="text-[10px] text-white/90 leading-snug line-clamp-2 group-hover:text-white">
+                      <p className="text-[10px] text-fg/90 leading-snug line-clamp-2 group-hover:text-fg">
                         {hit.title}
                       </p>
                       <div className="flex items-center gap-1.5 mt-0.5">
@@ -1026,7 +1062,7 @@ export function FeedPanel({ onRefresh, defaultGrid, hideGridControls }: { onRefr
           <span className="text-[10px] font-mono text-green-400">
             Showing <strong>{geo.country}</strong> ({geo.region}) relevant stories
           </span>
-          <button onClick={() => setGeoActive(false)} className="ml-auto text-dim hover:text-white">
+          <button onClick={() => setGeoActive(false)} className="ml-auto text-dim hover:text-fg">
             <X size={10} />
           </button>
         </div>
