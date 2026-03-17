@@ -53,7 +53,7 @@ export function Header({ onRefresh, onSettings, onNotifications }: HeaderProps) 
           PERSPECTIVE<span className="text-fg/40">OS</span>
         </span>
         <span className="hidden lg:block text-[9px] text-dim font-mono border border-border px-1 py-0.5 rounded">
-          v0.2
+          v0.3
         </span>
       </div>
 

@@ -129,7 +129,7 @@ function Dashboard() {
   if (activePanel === 'analysis') {
     return (
       <div className="flex flex-col h-screen overflow-hidden bg-bg text-fg">
-        <Header onRefresh={handleRefresh} onSettings={() => setShowSettings(true)} />
+        <Header onRefresh={handleRefresh} onSettings={() => setShowSettings(true)} onNotifications={() => setShowNotifications(p => !p)} />
         <AnalysisSearchBar />
         <main className="flex-1 flex overflow-hidden">
           <div className={`flex flex-col border-r border-border shrink-0 overflow-hidden ${

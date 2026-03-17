@@ -104,9 +104,12 @@ export function NotificationDrawer({ onClose }: { onClose: () => void }) {
                 </span>
               </div>
               {keywordHits.slice(0, 25).map(hit => (
-                <div
+                <a
                   key={hit.id}
-                  className={`flex items-start gap-2 px-3 py-2 border-b border-border/20 ${
+                  href={hit.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className={`flex items-start gap-2 px-3 py-2 border-b border-border/20 hover:bg-white/5 transition-colors group ${
                     hit.isNew ? 'bg-accent/5' : ''
                   }`}
                 >
@@ -114,7 +117,7 @@ export function NotificationDrawer({ onClose }: { onClose: () => void }) {
                     {hit.source === 'reddit' ? '🟠' : '📰'}
                   </span>
                   <div className="min-w-0 flex-1">
-                    <p className="text-[10px] text-white/80 line-clamp-2 leading-snug">{hit.title}</p>
+                    <p className="text-[10px] text-white/80 line-clamp-2 leading-snug group-hover:text-white">{hit.title}</p>
                     <div className="flex items-center gap-1.5 mt-0.5">
                       <span className="text-[8px] font-mono text-dim border border-border/50 px-1 rounded">
                         {hit.keyword}
@@ -122,9 +125,10 @@ export function NotificationDrawer({ onClose }: { onClose: () => void }) {
                       {hit.isNew && (
                         <span className="text-[8px] font-mono text-accent font-bold">NEW</span>
                       )}
+                      <span className="text-[8px] font-mono text-dim/40 group-hover:text-dim">↗</span>
                     </div>
                   </div>
-                </div>
+                </a>
               ))}
             </div>
           )}
