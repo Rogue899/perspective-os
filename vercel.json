@@ -7,7 +7,9 @@
     { "source": "/api/embed",    "destination": "/api/embed.js" },
     { "source": "/api/finance",          "destination": "/api/finance.js" },
     { "source": "/api/telegram-proxy",   "destination": "/api/telegram-proxy.js" },
-    { "source": "/api/eonet",          "destination": "/api/eonet.js" }
+    { "source": "/api/eonet",          "destination": "/api/eonet.js" },
+    { "source": "/api/newsdata",       "destination": "/api/newsdata.js" },
+    { "source": "/api/tone-baseline",  "destination": "/api/tone-baseline.js" }
   ],
   "headers": [
     {
