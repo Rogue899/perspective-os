@@ -7,6 +7,7 @@ import { MapView } from './components/Map/MapView';
 import { LivePanel } from './components/Live/LivePanel';
 import { FinancePanel } from './components/Finance/FinancePanel';
 import { WatchlistPanel } from './components/Watchlist/WatchlistPanel';
+import { ContextPanel } from './components/Context/ContextPanel';
 import { SettingsModal } from './components/Layout/SettingsModal';
 import { NotificationDrawer } from './components/Layout/NotificationDrawer';
 import { useApp } from './context/AppContext';
@@ -117,6 +118,20 @@ function Dashboard() {
         <Header onRefresh={handleRefresh} onSettings={() => setShowSettings(true)} onNotifications={() => setShowNotifications(p => !p)} />
         <main className="flex-1 overflow-hidden">
           <WatchlistPanel />
+        </main>
+        <StatusBar />
+        {showSettings && <SettingsModal onClose={() => setShowSettings(false)} />}
+        {showNotifications && <NotificationDrawer onClose={() => setShowNotifications(false)} />}
+      </div>
+    );
+  }
+
+  if (activePanel === 'context') {
+    return (
+      <div className="flex flex-col h-screen overflow-hidden bg-bg text-fg">
+        <Header onRefresh={handleRefresh} onSettings={() => setShowSettings(true)} onNotifications={() => setShowNotifications(p => !p)} />
+        <main className="flex-1 overflow-hidden">
+          <ContextPanel />
         </main>
         <StatusBar />
         {showSettings && <SettingsModal onClose={() => setShowSettings(false)} />}

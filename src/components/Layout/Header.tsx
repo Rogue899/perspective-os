@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useApp } from '../../context/AppContext';
-import { RefreshCw, Settings, Globe, Newspaper, Brain, Tv, TrendingUp, Bell, Sun, Moon } from 'lucide-react';
+import { RefreshCw, Settings, Globe, Newspaper, Brain, Tv, TrendingUp, Bell, Sun, Moon, GitBranch } from 'lucide-react';
 
 interface HeaderProps {
   onRefresh: () => void;
@@ -8,7 +8,7 @@ interface HeaderProps {
   onNotifications?: () => void;
 }
 
-type PanelId = 'news' | 'map' | 'analysis' | 'live' | 'finance' | 'watchlist';
+type PanelId = 'news' | 'map' | 'analysis' | 'live' | 'finance' | 'watchlist' | 'context';
 
 export function Header({ onRefresh, onSettings, onNotifications }: HeaderProps) {
   const { state, dispatch } = useApp();
@@ -43,6 +43,7 @@ export function Header({ onRefresh, onSettings, onNotifications }: HeaderProps) 
     { id: 'live',      label: 'Live',      icon: <Tv size={13} /> },
     { id: 'finance',   label: 'Finance',   icon: <TrendingUp size={13} /> },
     { id: 'watchlist', label: 'Watch',     icon: <Bell size={13} />, badge: watchlistHits || undefined },
+    { id: 'context',   label: 'Context',   icon: <GitBranch size={13} /> },
   ];
 
   return (

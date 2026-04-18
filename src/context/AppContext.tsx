@@ -15,7 +15,11 @@ interface AppState {
   sourcesStatus:      DataSourceStatus[];
   selectedCluster:    StoryCluster | null;
   sidebarOpen:        boolean;
-  activePanel:        'news' | 'map' | 'analysis' | 'live' | 'finance' | 'watchlist';
+  activePanel:        'news' | 'map' | 'analysis' | 'live' | 'finance' | 'watchlist' | 'context';
+  historyQuery:                string;
+  historySelectedNodeId:       string | null;
+  historyActivePerspectives:   string[];  // PerspectiveLens.key values
+  historyMode:                 'causal' | 'compare' | 'drill';
   watchlist:          WatchlistItem[];
   globalKeywords:     string[];           // AI-generated, shared across all panels
   keywordHits:        KeywordHit[];       // Live monitor results (capped at 100)
@@ -39,7 +43,11 @@ type Action =
   | { type: 'CLEAR_KEYWORD_HITS' }
   | { type: 'MARK_KEYWORDS_READ' }    // flip isNew → false for all hits
   | { type: 'SET_KEYWORD_MONITOR';    payload: boolean }
-  | { type: 'SET_LOCATION_FILTER';    payload: { name: string; lat: number; lng: number } | null };
+  | { type: 'SET_LOCATION_FILTER';    payload: { name: string; lat: number; lng: number } | null }
+  | { type: 'SET_HISTORY_QUERY';                 payload: string }
+  | { type: 'SET_HISTORY_SELECTED_NODE';         payload: string | null }
+  | { type: 'SET_HISTORY_ACTIVE_PERSPECTIVES';   payload: string[] }
+  | { type: 'SET_HISTORY_MODE';                  payload: 'causal' | 'compare' | 'drill' };
 
 const DEFAULT_SETTINGS: AppSettings = {
   geminiKey:            '',
@@ -57,13 +65,13 @@ const DEFAULT_SETTINGS: AppSettings = {
     'bbc', 'apnews', 'reuters', 'npr', 'cna', 'euronews', 'politicoeu',
     // Tech / AI
     'techcrunch', 'arstechnica', 'theverge', 'venturebeat', 'wired', 'mit-tech-review',
-    'hackernews', 'the-batch',
+    'hackernews',
     // Finance / Markets
     'yahoo-finance', 'marketwatch', 'coindesk', 'ft-tech',
     // MENA context
     'aljazeera', 'arabnews',
     // Intelligence aggregators
-    'ground-news', 'gdelt',
+    'gdelt',
     // Lebanon local
     'the961',
   ],
@@ -84,7 +92,13 @@ const DEFAULT_SETTINGS: AppSettings = {
 function loadSettings(): AppSettings {
   try {
     const stored = localStorage.getItem('pos-settings');
-    if (stored) return { ...DEFAULT_SETTINGS, ...JSON.parse(stored) };
+    if (stored) {
+      const parsed = { ...DEFAULT_SETTINGS, ...JSON.parse(stored) } as AppSettings;
+      return {
+        ...parsed,
+        enabledSources: parsed.enabledSources.filter(id => id !== 'ground-news' && id !== 'the-batch'),
+      };
+    }
   } catch {}
   return DEFAULT_SETTINGS;
 }
@@ -110,6 +124,10 @@ const initialState: AppState = {
   keywordHits:        [],
   keywordMonitorOn:   false,
   locationFilter:     null,
+  historyQuery:                '',
+  historySelectedNodeId:       null,
+  historyActivePerspectives:   [],
+  historyMode:                 'causal',
 };
 
 function reducer(state: AppState, action: Action): AppState {
@@ -182,6 +200,10 @@ function reducer(state: AppState, action: Action): AppState {
       return { ...state, keywordMonitorOn: action.payload };
     case 'SET_LOCATION_FILTER':
       return { ...state, locationFilter: action.payload };
+    case 'SET_HISTORY_QUERY':               return { ...state, historyQuery: action.payload };
+    case 'SET_HISTORY_SELECTED_NODE':       return { ...state, historySelectedNodeId: action.payload };
+    case 'SET_HISTORY_ACTIVE_PERSPECTIVES': return { ...state, historyActivePerspectives: action.payload };
+    case 'SET_HISTORY_MODE':                return { ...state, historyMode: action.payload };
     default:
       return state;
   }
