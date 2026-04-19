@@ -1,12 +1,15 @@
-import { useState, useCallback, useEffect, useRef, type ReactNode } from 'react';
+import { useState, useCallback, useEffect, useMemo, useRef, type ReactNode } from 'react';
 import { OpinionPanel } from './OpinionPanel';
-import { HistoricalPanel } from './HistoricalPanel';
+import { EventGraphPanel } from './EventGraphPanel';
+import type { GraphFocusTarget } from './EventGraphPanel';
+import { useEventGraph } from '../../hooks/useEventGraph';
 import type { StoryCluster, PerspectiveAnalysis, SourcePerspective } from '../../types';
 import { getSourceById, getBiasTextClass, getBiasBgClass, getSourceTypeLabel } from '../../config/sources';
 import { useApp } from '../../context/AppContext';
 import { analyzePerspectives } from '../../services/ai';
-import { X, Sparkles, ChevronDown, ChevronUp, ExternalLink, HelpCircle, Eye, AlertCircle, PlayCircle, Copy, Check, BookOpen, Send, MessageSquare, RotateCcw } from 'lucide-react';
+import { X, Sparkles, ChevronDown, ChevronUp, ExternalLink, HelpCircle, Eye, AlertCircle, PlayCircle, Copy, Check, BookOpen, Send, MessageSquare, RotateCcw, Network } from 'lucide-react';
 import type { BiasColor } from '../../types';
+import { HistoricalAncestorStrip } from './HistoricalAncestorStrip';
 // ── Shared helpers ────────────────────────────────────────────────────────────
 
 type SocialPost = { title: string; url: string; author: string; ago: string };
@@ -195,6 +198,7 @@ export function PerspectivePanel() {
   const [copiedQuestionIdx, setCopiedQuestionIdx] = useState<number | null>(null);
   const [showOpinions, setShowOpinions] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
+  const [graphFocus, setGraphFocus] = useState<GraphFocusTarget | null>(null);
   const [polyPredictions, setPolyPredictions] = useState<Array<{ question: string; probability: number; url: string }>>([]);
 
   // Fetch Polymarket markets relevant to this story
@@ -614,6 +618,23 @@ export function PerspectivePanel() {
   }, [chatInput, chatLoading, selectedCluster]);
 
   const groundNewsUrl = `https://ground.news/search?query=${encodeURIComponent(selectedCluster.headline)}`;
+  const openGraphInspector = useCallback((focus?: GraphFocusTarget | null) => {
+    setGraphFocus(focus ?? null);
+    setShowHistory(true);
+  }, []);
+  const { graph: graphBundle } = useEventGraph(selectedCluster, { loadHistorical: false });
+  const compactClaims = useMemo(
+    () => graphBundle.claims
+      .filter(claim => claim.claimType !== 'perspective-frame')
+      .slice()
+      .sort((a, b) => b.confidence.overall - a.confidence.overall || b.evidenceIds.length - a.evidenceIds.length)
+      .slice(0, 3),
+    [graphBundle],
+  );
+  const compactViews = useMemo(
+    () => graphBundle.perspectiveViews.slice(0, 3),
+    [graphBundle],
+  );
 
   const summarizeBloc = (rows: SourcePerspective[]) => {
     if (!rows.length) return 'No clear framing signals in this cluster.';
@@ -628,7 +649,14 @@ export function PerspectivePanel() {
         <OpinionPanel cluster={selectedCluster} onClose={() => setShowOpinions(false)} />
       )}
       {showHistory && (
-        <HistoricalPanel cluster={selectedCluster} onClose={() => setShowHistory(false)} />
+        <EventGraphPanel
+          cluster={selectedCluster}
+          initialFocus={graphFocus}
+          onClose={() => {
+            setShowHistory(false);
+            setGraphFocus(null);
+          }}
+        />
       )}
       {/* Header */}
       <div className="flex items-center justify-between px-4 py-2.5 border-b border-border shrink-0">
@@ -710,12 +738,12 @@ export function PerspectivePanel() {
               AI Opinions
             </button>
             <button
-              onClick={() => setShowHistory(true)}
-              title="Show historical context for this story"
+              onClick={() => openGraphInspector()}
+              title="Open the event graph inspector for this story"
               className="inline-flex items-center gap-1 px-2 py-1 text-[10px] font-mono rounded border border-border text-dim hover:text-white hover:border-accent transition-colors"
             >
               <BookOpen size={9} />
-              History
+              Graph
             </button>
             <a
               href={groundNewsUrl}
@@ -764,6 +792,78 @@ export function PerspectivePanel() {
             <QuickSide title="Center / Wire" text={summarizeSide(grouped.center)} tone="text-gray-300" />
             <QuickSide title="Right / Nationalist" text={summarizeSide(grouped.right)} tone="text-red-300" />
             <QuickSide title="State Media" text={summarizeSide(grouped.state)} tone="text-purple-300" />
+          </div>
+        </CollapsibleSection>
+
+        <CollapsibleSection id="graph" title="Event Graph" icon={<Network size={11} className="text-accent" />} badge="live schema"
+          collapsed={collapsedSections} onToggle={toggleSection}>
+          <div className="pt-1 space-y-3">
+            <div className="grid grid-cols-2 gap-2">
+              <div className="rounded border border-border bg-white/[0.02] px-2.5 py-2">
+                <div className="text-[9px] font-mono uppercase tracking-wider text-dim">Claims</div>
+                <div className="mt-1 text-base font-semibold text-white">{graphBundle.claims.length}</div>
+              </div>
+              <div className="rounded border border-border bg-white/[0.02] px-2.5 py-2">
+                <div className="text-[9px] font-mono uppercase tracking-wider text-dim">Evidence</div>
+                <div className="mt-1 text-base font-semibold text-white">{graphBundle.evidence.length}</div>
+              </div>
+              <div className="rounded border border-border bg-white/[0.02] px-2.5 py-2">
+                <div className="text-[9px] font-mono uppercase tracking-wider text-dim">Entities</div>
+                <div className="mt-1 text-base font-semibold text-white">{graphBundle.entities.length}</div>
+              </div>
+              <div className="rounded border border-border bg-white/[0.02] px-2.5 py-2">
+                <div className="text-[9px] font-mono uppercase tracking-wider text-dim">Views</div>
+                <div className="mt-1 text-base font-semibold text-white">{graphBundle.perspectiveViews.length}</div>
+              </div>
+            </div>
+
+            {graphBundle.events[0] && (
+              <div className="rounded border border-border bg-white/[0.02] px-3 py-2.5">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-[10px] font-mono uppercase tracking-wider text-accent">Canonical Event</span>
+                  <span className="text-[10px] font-mono text-dim">{Math.round(graphBundle.events[0].confidence.overall * 100)}%</span>
+                </div>
+                <p className="mt-1.5 text-[11px] text-white/85 leading-relaxed">{graphBundle.events[0].summary || graphBundle.events[0].label}</p>
+              </div>
+            )}
+
+            {compactClaims.length > 0 && (
+              <div className="space-y-2">
+                <div className="text-[10px] font-mono uppercase tracking-wider text-dim">Top Claims</div>
+                {compactClaims.map(claim => (
+                  <button
+                    key={claim.id}
+                    onClick={() => openGraphInspector({ type: 'claim', id: claim.id })}
+                    className="w-full text-left rounded border border-border bg-white/[0.02] px-3 py-2.5 hover:border-accent/40 hover:bg-accent/[0.04] transition-colors"
+                  >
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-[9px] font-mono uppercase tracking-wider text-accent/80">{claim.claimType.replace(/-/g, ' ')}</span>
+                      <span className="text-[9px] font-mono text-dim">{claim.evidenceIds.length} ev</span>
+                    </div>
+                    <p className="mt-1 text-[11px] text-white/80 leading-relaxed">{claim.text}</p>
+                  </button>
+                ))}
+              </div>
+            )}
+
+            <div className="rounded border border-border bg-white/[0.02] px-3 py-2.5">
+              <div className="text-[10px] font-mono uppercase tracking-wider text-dim">Perspective Views</div>
+              {compactViews.length > 0 ? (
+                <div className="mt-2 flex flex-wrap gap-1.5">
+                  {compactViews.map(view => (
+                    <button
+                      key={view.id}
+                      onClick={() => openGraphInspector({ type: 'view', id: view.id })}
+                      className="text-[9px] font-mono px-1.5 py-0.5 rounded border border-border bg-white/5 text-white/75 hover:border-accent/40 hover:text-white transition-colors"
+                    >
+                      {view.label}
+                    </button>
+                  ))}
+                </div>
+              ) : (
+                <p className="mt-1.5 text-[10px] text-dim">Run perspective analysis to derive native comparison views on the shared claim graph.</p>
+              )}
+            </div>
           </div>
         </CollapsibleSection>
 
@@ -1337,6 +1437,9 @@ export function PerspectivePanel() {
               </button>
             </div>
           </div>
+        )}
+        {selectedCluster && (
+          <HistoricalAncestorStrip storyCluster={selectedCluster} />
         )}
       </div>
     </div>
