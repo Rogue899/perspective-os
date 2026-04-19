@@ -13,6 +13,7 @@ import type { PerspectiveLens } from '../../services/history-graph-adapter';
 import { DiscoverBar } from './DiscoverBar';
 import { ModeToolbar } from './ModeToolbar';
 import { GraphTreeViewport } from './GraphTreeViewport';
+import { PerspectiveCompareView } from './PerspectiveCompareView';
 import { DetailDrawer } from './DetailDrawer';
 
 export function ContextPanel() {
@@ -157,12 +158,13 @@ export function ContextPanel() {
 
         {/* Graph viewport */}
         {bundle && !error && (
-          historyMode === 'compare' ? (
-            /* TODO(Wave 4): integrate <PerspectiveCompareView /> created by Agent F */
-            <GraphTreeViewport
+          historyMode === 'compare' && historyActivePerspectives.length === 2 ? (
+            <PerspectiveCompareView
               bundle={bundle}
-              activePerspectiveKeys={historyActivePerspectives}
+              perspectiveAKey={historyActivePerspectives[0]}
+              perspectiveBKey={historyActivePerspectives[1]}
               onNodeClick={handleNodeClick}
+              selectedNodeId={historySelectedNodeId}
             />
           ) : (
             <GraphTreeViewport

@@ -1,66 +1,6 @@
-/**
- * Wave 4 integration note: This component is standalone. The parallel Wave 3 Agent E
- * creates ContextPanel.tsx with a `TODO(Wave 4)` placeholder marking where to integrate
- * this component when `state.historyMode === 'compare'`. Wave 4 will wire it up.
- */
-
 import type { EventGraphBundle, GraphEdge, PerspectiveLens } from '../../services/history-graph-adapter';
 import { isUniversalEdge, getEdgeAsserters } from '../../services/history-graph-adapter';
-
-// ---------------------------------------------------------------------------
-// GraphTreeViewport stub
-// ---------------------------------------------------------------------------
-// Agent E (Wave 3) creates GraphTreeViewport.tsx in parallel. If it has not
-// been committed yet when this file is compiled, we fall back to a minimal
-// list-based renderer. Wave 4 will replace this import with the real viewport.
-//
-// To switch: delete this stub block and uncomment the import below.
-//
-//   import { GraphTreeViewport } from './GraphTreeViewport';
-//
-// ---------------------------------------------------------------------------
-
-interface StubViewportProps {
-  bundle: EventGraphBundle;
-  activePerspectiveKeys: string[];
-  onNodeClick: (id: string) => void;
-  selectedNodeId?: string | null;
-}
-
-function GraphTreeViewport({
-  bundle,
-  activePerspectiveKeys: _activePerspectiveKeys,
-  onNodeClick,
-  selectedNodeId,
-}: StubViewportProps) {
-  // Wave 4: replace this body with the real <GraphTreeViewport> import.
-  if (bundle.events.length === 0) {
-    return (
-      <div className="flex items-center justify-center h-full text-dim text-[11px] font-mono">
-        No events in this view.
-      </div>
-    );
-  }
-
-  return (
-    <ul className="flex flex-col gap-1 p-3 overflow-y-auto h-full">
-      {bundle.events.map(event => (
-        <li
-          key={event.id}
-          onClick={() => onNodeClick(event.id)}
-          className={[
-            'cursor-pointer rounded px-2 py-1.5 text-[11px] font-mono transition-colors',
-            selectedNodeId === event.id
-              ? 'bg-accent/20 border border-accent/40 text-fg'
-              : 'bg-surface border border-border text-fg hover:bg-surface/80',
-          ].join(' ')}
-        >
-          {event.label}
-        </li>
-      ))}
-    </ul>
-  );
-}
+import { GraphTreeViewport } from './GraphTreeViewport';
 
 // ---------------------------------------------------------------------------
 // Edge divergence computation
@@ -149,8 +89,7 @@ export function PerspectiveCompareView({
   const divergeCount = onlyA.length + onlyB.length;
 
   // Per-column bundles: pass full bundle but restrict edges via activePerspectiveKeys.
-  // GraphTreeViewport uses activePerspectiveKeys to filter internally.
-  // (The stub above ignores it — real viewport will honour it.)
+  // GraphTreeViewport uses activePerspectiveKeys to filter edge display internally.
 
   // Check whether each perspective key appears in any claim's perspectiveLens
   const claimKeys = new Set(
@@ -194,7 +133,6 @@ export function PerspectiveCompareView({
                 bundle={bundle}
                 activePerspectiveKeys={[perspectiveAKey]}
                 onNodeClick={onNodeClick}
-                selectedNodeId={selectedNodeId}
               />
             </div>
           ) : (
@@ -219,7 +157,6 @@ export function PerspectiveCompareView({
                 bundle={bundle}
                 activePerspectiveKeys={[perspectiveBKey]}
                 onNodeClick={onNodeClick}
-                selectedNodeId={selectedNodeId}
               />
             </div>
           ) : (
