@@ -1,4 +1,5 @@
 import { LIVE_CHANNELS } from '../config/live-channels';
+import { fetchWithSettings } from './integration-settings';
 
 export interface DiscoveredLiveChannel {
   id: string;
@@ -70,7 +71,7 @@ Topic: ${params.topic || 'general breaking news'}
 Candidates: ${heuristics.map(c => `${c.id} (${c.name}, ${c.region})`).join(', ')}
 Rules: choose 3-5 ids, prioritize relevance and diversity.`;
 
-    const res = await fetch('/api/ai', {
+    const res = await fetchWithSettings('/api/ai', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ prompt, tier: 'flash-lite', maxTokens: 120 }),

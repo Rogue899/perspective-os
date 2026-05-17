@@ -8,6 +8,7 @@
 import type { RawArticle, ScoredArticle, StoryCluster } from '../types';
 import { classifyWithAI, classifyWithKeywords } from '../services/ai';
 import { getSourceById } from '../config/sources';
+import { fetchWithSettings } from '../services/integration-settings';
 import { detectFocalPoints } from './focal-points';
 
 // ─── Concurrency limiter — prevents 750 parallel HTTP calls ───────────────────
@@ -103,7 +104,7 @@ function inferGeo(text: string): { lat: number; lng: number; name: string } | un
 
 async function fetchEmbedding(title: string): Promise<number[]> {
   try {
-    const res = await fetch('/api/embed', {
+    const res = await fetchWithSettings('/api/embed', {
       method:  'POST',
       headers: { 'Content-Type': 'application/json' },
       body:    JSON.stringify({ text: title.slice(0, 200) }),

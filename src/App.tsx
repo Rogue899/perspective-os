@@ -11,6 +11,7 @@ import { ContextPanel } from './components/Context/ContextPanel';
 import { SettingsModal } from './components/Layout/SettingsModal';
 import { NotificationDrawer } from './components/Layout/NotificationDrawer';
 import { useApp } from './context/AppContext';
+import { fetchWithSettings } from './services/integration-settings';
 import type { KeywordHit } from './types';
 import {
   startKeywordMonitor,
@@ -269,7 +270,7 @@ function AnalysisSearchBar() {
     if (!trimmed || trimmed === lastQuery) return;
     setLoading(true);
     try {
-      const res = await fetch('/api/ai', {
+      const res = await fetchWithSettings('/api/ai', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

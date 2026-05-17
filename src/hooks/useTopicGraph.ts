@@ -13,6 +13,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { EventGraphBundle } from '../services/history-graph-adapter';
+import { fetchWithSettings } from '../services/integration-settings';
 import {
   getCachedTopicGraph,
   setCachedTopicGraph,
@@ -149,7 +150,7 @@ export function useTopicGraph(query: string, storyClusterId?: string): UseTopicG
       startProgressRotation();
 
       try {
-        const response = await fetch('/api/history/topic-graph', {
+        const response = await fetchWithSettings('/api/history/topic-graph', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({

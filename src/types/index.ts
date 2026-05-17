@@ -152,6 +152,10 @@ export interface AppSettings {
   geminiKey: string;
   groqKey: string;
   acledKey: string;
+  acledEmail: string;
+  acledPassword: string;
+  marketstackKey: string;
+  newsdataKey: string;
   nasaFirmsKey: string;
   openSkyUser: string;
   openSkyPass: string;
@@ -218,3 +222,5 @@ export interface KeywordHit {
   seenAt: string;                // ISO string — when monitor found it
   isNew: boolean;                // true on first-seen, set to false after display
 }
+
+export * from './event-graph';

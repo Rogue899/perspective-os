@@ -1,7 +1,22 @@
 import { useState } from 'react';
 import { useApp } from '../../context/AppContext';
 import { getAllSources } from '../../config/sources';
-import { X, Database, Link, Plus, Trash2 } from 'lucide-react';
+import { fetchWithSettings } from '../../services/integration-settings';
+import { X, Database, Link, Plus, Sparkles, Trash2 } from 'lucide-react';
+
+const INTEGRATION_ROWS = [
+  { name: 'Gemini', mode: 'API key', note: 'Used for classification, perspectives, keywords, history synthesis, and embeddings.' },
+  { name: 'Groq', mode: 'API key', note: 'Fallback AI provider when Gemini is unavailable.' },
+  { name: 'MarketStack', mode: 'API key', note: 'Required for finance EOD, FX, and ticker search.' },
+  { name: 'NewsData.io', mode: 'API key', note: 'Optional article enrichment and fallback coverage.' },
+  { name: 'ACLED', mode: 'Account credentials', note: 'Email + password for conflict event access when enabled.' },
+  { name: 'Upstash Redis', mode: 'URL + token', note: 'Used for AI caching, embeddings, tone baselines, and history cache/rate limits.' },
+  { name: 'GDELT', mode: 'Open', note: 'No key required. Used for topic feeds and map events.' },
+  { name: 'NASA EONET', mode: 'Open', note: 'No key required. Used for natural event layers.' },
+  { name: 'OpenStreetMap/Nominatim', mode: 'Open', note: 'No key required. Used for reverse geocoding and tiles.' },
+  { name: 'Wikipedia / Internet Archive / Yahoo / CoinGecko / Polymarket / FRED', mode: 'Open', note: 'Public data sources used across history and finance panels.' },
+  { name: 'X / Reddit / Meta / TikTok', mode: 'Linked account optional', note: 'Current app mostly uses public feeds. Settings can track linked-account readiness.' },
+] as const;
 
 export function SettingsModal({ onClose }: { onClose: () => void }) {
   const { state, dispatch } = useApp();
@@ -94,7 +109,7 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
     if (!localForm.country && !localForm.city) return;
     setDetectLoading(true);
     try {
-      const res = await fetch('/api/ai', {
+      const res = await fetchWithSettings('/api/ai', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -137,11 +152,114 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
         </div>
 
         <div className="flex-1 overflow-y-auto">
-          {/* Security note */}
+          <Section title="Integrations" icon={<Database size={13} />}>
+            <div className="space-y-2">
+              {INTEGRATION_ROWS.map(row => (
+                <div key={row.name} className="rounded border border-border bg-white/[0.03] px-3 py-2">
+                  <div className="flex items-center justify-between gap-3">
+                    <span className="text-[11px] font-mono text-white">{row.name}</span>
+                    <span className="text-[9px] font-mono uppercase tracking-wider text-accent">{row.mode}</span>
+                  </div>
+                  <p className="mt-1 text-[10px] text-dim leading-relaxed">{row.note}</p>
+                </div>
+              ))}
+            </div>
+          </Section>
+
           <Section title="Security" icon={<Link size={13} />}>
             <div className="text-[11px] text-dim leading-relaxed">
-              API keys are not editable or persisted in the browser UI anymore.
-              Configure keys only in local server env (`.env.local`) for dev, or in Vercel project env for deploy.
+              Integration credentials entered here are stored locally in this browser profile and sent only to this app's `/api/*` routes.
+              Server env vars still work as defaults, but user-provided settings now override them for your session.
+            </div>
+          </Section>
+
+          <Section title="AI Providers" icon={<Sparkles size={13} />}>
+            <div className="space-y-2.5">
+              <div>
+                <label className="block text-[11px] font-mono text-dim mb-1">Primary AI Provider</label>
+                <select
+                  value={settings.aiProvider}
+                  onChange={e => update('aiProvider', e.target.value as typeof settings.aiProvider)}
+                  className="w-full bg-bg border border-border rounded px-2.5 py-1.5 text-xs font-mono text-white focus:outline-none focus:border-accent"
+                >
+                  <option value="gemini-flash">Gemini Flash</option>
+                  <option value="gemini-flash-lite">Gemini Flash-Lite</option>
+                  <option value="groq">Groq</option>
+                  <option value="browser-t5">Browser T5 fallback</option>
+                </select>
+              </div>
+              <Field
+                label="Gemini API Key"
+                hint="Used for AI analysis, keyword generation, history synthesis, and embeddings."
+                type="password"
+                value={settings.geminiKey}
+                onChange={v => update('geminiKey', v)}
+                placeholder="AIza..."
+              />
+              <Field
+                label="Groq API Key"
+                hint="Fallback LLM provider when Gemini is rate-limited or unavailable."
+                type="password"
+                value={settings.groqKey}
+                onChange={v => update('groqKey', v)}
+                placeholder="gsk_..."
+              />
+            </div>
+          </Section>
+
+          <Section title="API Credentials" icon={<Link size={13} />}>
+            <div className="space-y-2.5">
+              <Field
+                label="MarketStack API Key"
+                hint="Required for finance EOD, FX, and ticker search calls."
+                type="password"
+                value={settings.marketstackKey}
+                onChange={v => update('marketstackKey', v)}
+                placeholder="marketstack key"
+              />
+              <Field
+                label="NewsData.io API Key"
+                hint="Optional news enrichment and fallback article discovery."
+                type="password"
+                value={settings.newsdataKey}
+                onChange={v => update('newsdataKey', v)}
+                placeholder="newsdata key"
+              />
+              <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                <Field
+                  label="ACLED Email"
+                  hint="Used for ACLED OAuth token exchange."
+                  type="email"
+                  value={settings.acledEmail}
+                  onChange={v => update('acledEmail', v)}
+                  placeholder="you@example.com"
+                />
+                <Field
+                  label="ACLED Password"
+                  hint="Stored locally and forwarded only to this app's API route."
+                  type="password"
+                  value={settings.acledPassword}
+                  onChange={v => update('acledPassword', v)}
+                  placeholder="ACLED password"
+                />
+              </div>
+              <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                <Field
+                  label="Upstash Redis URL"
+                  hint="Enables caching, tone baselines, and history persistence."
+                  value={settings.upstashUrl}
+                  onChange={v => update('upstashUrl', v)}
+                  placeholder="https://...upstash.io"
+                />
+                <Field
+                  label="Upstash Redis Token"
+                  hint="Required with the Upstash URL."
+                  type="password"
+                  value={settings.upstashToken}
+                  onChange={v => update('upstashToken', v)}
+                  placeholder="upstash token"
+                />
+              </div>
             </div>
           </Section>
 

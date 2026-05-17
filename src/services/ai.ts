@@ -5,6 +5,7 @@
  */
 
 import type { AIProvider, AIResponse } from '../types';
+import { fetchWithSettings } from './integration-settings';
 
 const TIMEOUT_MS = 8000;
 
@@ -12,7 +13,7 @@ async function fetchWithTimeout(url: string, opts: RequestInit, ms = TIMEOUT_MS)
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), ms);
   try {
-    return await fetch(url, { ...opts, signal: ctrl.signal });
+    return await fetchWithSettings(url, { ...opts, signal: ctrl.signal });
   } finally {
     clearTimeout(timer);
   }
@@ -55,10 +56,11 @@ Text: "${text.slice(0, 500)}"`;
 // ─── Tier 1: Gemini Flash-Lite (story deduplication embedding) ───────────────
 export async function getEmbedding(text: string): Promise<number[]> {
   try {
-    const res = await fetchWithTimeout('/api/embed', {
+    const res = await fetchWithSettings('/api/embed', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ text: text.slice(0, 1000) }),
+      signal: AbortSignal.timeout(TIMEOUT_MS),
     });
     if (!res.ok) throw new Error('embed fail');
     const data = await res.json();

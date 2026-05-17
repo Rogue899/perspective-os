@@ -53,6 +53,10 @@ const DEFAULT_SETTINGS: AppSettings = {
   geminiKey:            '',
   groqKey:              '',
   acledKey:             '',
+  acledEmail:           '',
+  acledPassword:        '',
+  marketstackKey:       '',
+  newsdataKey:          '',
   nasaFirmsKey:         '',
   openSkyUser:          '',
   openSkyPass:          '',
@@ -155,14 +159,6 @@ function reducer(state: AppState, action: Action): AppState {
       const next = {
         ...state.settings,
         ...action.payload,
-        geminiKey: '',
-        groqKey: '',
-        acledKey: '',
-        nasaFirmsKey: '',
-        openSkyUser: '',
-        openSkyPass: '',
-        upstashUrl: '',
-        upstashToken: '',
       };
       try { localStorage.setItem('pos-settings', JSON.stringify(next)); } catch {}
       return { ...state, settings: next };

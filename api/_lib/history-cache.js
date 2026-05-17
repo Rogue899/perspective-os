@@ -17,19 +17,30 @@ const LOCK_TTL    = 60;      // seconds
 /** @type {import('@upstash/redis').Redis | null} */
 let _redis = null;
 let _tried = false;
+let _overrideUrl = '';
+let _overrideToken = '';
+
+export function setHistoryCacheRedisConfig(url = '', token = '') {
+  _overrideUrl = url;
+  _overrideToken = token;
+  _redis = null;
+  _tried = false;
+}
 
 async function getRedis() {
   if (_tried) return _redis;
   _tried = true;
-  if (!process.env.UPSTASH_REDIS_REST_URL || !process.env.UPSTASH_REDIS_REST_TOKEN) {
+  const url = _overrideUrl || process.env.UPSTASH_REDIS_REST_URL;
+  const token = _overrideToken || process.env.UPSTASH_REDIS_REST_TOKEN;
+  if (!url || !token) {
     console.warn('[history-cache] Upstash env vars missing — running without Redis cache');
     return null;
   }
   try {
     const { Redis } = await import('@upstash/redis');
     _redis = new Redis({
-      url:   process.env.UPSTASH_REDIS_REST_URL,
-      token: process.env.UPSTASH_REDIS_REST_TOKEN,
+      url,
+      token,
     });
   } catch {
     console.warn('[history-cache] @upstash/redis not available');

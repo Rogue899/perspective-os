@@ -6,6 +6,8 @@
 
 export const config = { runtime: 'edge' };
 
+import { getRequestIntegrationSettings, SETTINGS_ACCESS_CONTROL_HEADERS } from './_lib/request-settings.js';
+
 export default async function handler(req) {
   if (req.method === 'OPTIONS') {
     return withCors(new Response(null, { status: 204 }));
@@ -17,7 +19,8 @@ export default async function handler(req) {
     }));
   }
 
-  const apiKey = process.env.NEWSDATA_API_KEY;
+  const settings = getRequestIntegrationSettings(req);
+  const apiKey = settings.newsdataKey;
   if (!apiKey) {
     return withCors(Response.json({ articles: [], disabled: true, reason: 'NEWSDATA_API_KEY missing' }));
   }
@@ -68,6 +71,6 @@ export default async function handler(req) {
 function withCors(res) {
   res.headers.set('Access-Control-Allow-Origin', '*');
   res.headers.set('Access-Control-Allow-Methods', 'GET, OPTIONS');
-  res.headers.set('Access-Control-Allow-Headers', 'Content-Type');
+  res.headers.set('Access-Control-Allow-Headers', SETTINGS_ACCESS_CONTROL_HEADERS);
   return res;
 }

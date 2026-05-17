@@ -12,6 +12,8 @@
 
 export const config = { runtime: 'edge' };
 
+import { getRequestIntegrationSettings, SETTINGS_ACCESS_CONTROL_HEADERS } from './_lib/request-settings.js';
+
 const TOKEN_CACHE_KEY  = 'acled:oauth:token';
 const EVENT_CACHE_KEY  = 'acled:30d';
 const TOKEN_TTL = 82800;  // 23h (token valid 24h)
@@ -49,22 +51,26 @@ async function fetchAcledToken(email, password) {
 // ── CORS helpers ──────────────────────────────────────────────────────────────
 const cors = (res) => {
   res.headers.set('Access-Control-Allow-Origin', '*');
+  res.headers.set('Access-Control-Allow-Headers', SETTINGS_ACCESS_CONTROL_HEADERS);
   return res;
 };
 const corsOk = () => new Response(null, {
   status:  204,
-  headers: { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Methods': 'GET' },
+  headers: {
+    'Access-Control-Allow-Origin': '*',
+    'Access-Control-Allow-Methods': 'GET',
+    'Access-Control-Allow-Headers': SETTINGS_ACCESS_CONTROL_HEADERS,
+  },
 });
 
 export default async function handler(req) {
   if (req.method === 'OPTIONS') return corsOk();
 
-  const {
-    ACLED_EMAIL,
-    ACLED_PASSWORD,
-    UPSTASH_REDIS_REST_URL,
-    UPSTASH_REDIS_REST_TOKEN,
-  } = process.env;
+  const settings = getRequestIntegrationSettings(req);
+  const ACLED_EMAIL = settings.acledEmail;
+  const ACLED_PASSWORD = settings.acledPassword;
+  const UPSTASH_REDIS_REST_URL = settings.upstashUrl;
+  const UPSTASH_REDIS_REST_TOKEN = settings.upstashToken;
 
   if (!ACLED_EMAIL || !ACLED_PASSWORD) {
     return cors(Response.json({ error: 'ACLED credentials not configured', events: [] }, { status: 200 }));

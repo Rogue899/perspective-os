@@ -7,6 +7,7 @@ import type { StoryCluster, PerspectiveAnalysis, SourcePerspective } from '../..
 import { getSourceById, getBiasTextClass, getBiasBgClass, getSourceTypeLabel } from '../../config/sources';
 import { useApp } from '../../context/AppContext';
 import { analyzePerspectives } from '../../services/ai';
+import { fetchWithSettings } from '../../services/integration-settings';
 import { X, Sparkles, ChevronDown, ChevronUp, ExternalLink, HelpCircle, Eye, AlertCircle, PlayCircle, Copy, Check, BookOpen, Send, MessageSquare, RotateCcw, Network } from 'lucide-react';
 import type { BiasColor } from '../../types';
 import { HistoricalAncestorStrip } from './HistoricalAncestorStrip';
@@ -205,7 +206,7 @@ export function PerspectivePanel() {
   useEffect(() => {
     if (!selectedCluster) return;
     const words = selectedCluster.headline.toLowerCase().split(/\W+/).filter(w => w.length > 4);
-    fetch('/api/finance?type=polymarket')
+    fetchWithSettings('/api/finance?type=polymarket')
       .then(r => r.json())
       .then(data => {
         const markets: Array<{ question: string; outcomePrices: string; slug?: string }> = data.markets ?? [];
@@ -241,7 +242,7 @@ export function PerspectivePanel() {
 
     const fetchReddit = async (): Promise<SocialPost[]> => {
       const url = `https://www.reddit.com/search.rss?q=${q}&sort=top&t=week&limit=5`;
-      const res = await fetch(`/api/rss-proxy?url=${encodeURIComponent(url)}`, { signal: AbortSignal.timeout(6000) });
+      const res = await fetchWithSettings(`/api/rss-proxy?url=${encodeURIComponent(url)}`, { signal: AbortSignal.timeout(6000) });
       if (!res.ok) return [];
       const doc = new DOMParser().parseFromString(await res.text(), 'text/xml');
       return Array.from(doc.querySelectorAll('entry')).slice(0, 5).map(e => ({
@@ -296,7 +297,7 @@ export function PerspectivePanel() {
 
       for (const url of nitterCandidates) {
         try {
-          const res = await fetch(`/api/rss-proxy?url=${encodeURIComponent(url)}`, { signal: AbortSignal.timeout(7000) });
+          const res = await fetchWithSettings(`/api/rss-proxy?url=${encodeURIComponent(url)}`, { signal: AbortSignal.timeout(7000) });
           if (!res.ok) continue;
           const xml = await res.text();
           const posts = parseFeed(xml, 'nitter');
@@ -312,7 +313,7 @@ export function PerspectivePanel() {
       // Fallback/augmentation: normal X links via Google News RSS (works without X account)
       try {
         const xNewsRss = `https://news.google.com/rss/search?q=site:x.com+${q}&hl=en-US&gl=US&ceid=US:en`;
-        const res = await fetch(`/api/rss-proxy?url=${encodeURIComponent(xNewsRss)}`, { signal: AbortSignal.timeout(7000) });
+        const res = await fetchWithSettings(`/api/rss-proxy?url=${encodeURIComponent(xNewsRss)}`, { signal: AbortSignal.timeout(7000) });
         if (res.ok) {
           const xml = await res.text();
           collected.push(...parseFeed(xml, 'x'));
@@ -548,7 +549,7 @@ export function PerspectivePanel() {
     if (!article) return;
     try {
       const prompt = `Evaluate this claim for credibility and return ONLY JSON:\n{"label":"likely|mixed|unverified","confidence":0.0}\nClaim: ${article.title}\nSummary: ${article.description}`;
-      const res = await fetch('/api/ai', {
+      const res = await fetchWithSettings('/api/ai', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ prompt, tier: 'flash-lite', maxTokens: 100 }),
@@ -602,7 +603,7 @@ export function PerspectivePanel() {
         selectedCluster.articles.slice(0, 3).map(a => `[${a.sourceName}] ${a.title}`).join('\n'),
       ].join('\n');
       const prompt = `You are a media analysis assistant. Given the following news story context, answer the user's question concisely and factually. Do not repeat the context back — just answer directly.\n\nContext:\n${context}\n\nUser question: ${question}\n\nAnswer in 2-4 sentences. Be direct.`;
-      const res = await fetch('/api/ai', {
+      const res = await fetchWithSettings('/api/ai', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ prompt, tier: 'flash-lite', maxTokens: 400 }),

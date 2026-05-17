@@ -1,10 +1,13 @@
-import { useEffect, useRef, useState, useCallback } from 'react';
+import { useEffect, useRef, useState, useCallback, useMemo } from 'react';
 import maplibregl from 'maplibre-gl';
-import { Locate, LocateFixed, LoaderCircle, MessageCircle, X } from 'lucide-react';
+import { Locate, LocateFixed, LoaderCircle, MessageCircle, Network, X } from 'lucide-react';
 import { fetchGdeltEvents } from '../../services/gdelt';
 import { fetchEONETEvents, EONET_CATEGORY_COLOR, EONET_CATEGORY_ICON } from '../../services/eonet';
 import { discoverLiveChannelsForLocation } from '../../services/live-discovery';
 import type { EONETEvent } from '../../services/eonet';
+import { EventGraphPanel } from '../News/EventGraphPanel';
+import type { GraphFocusTarget } from '../News/EventGraphPanel';
+import { useEventGraphSubject } from '../../hooks/useEventGraph';
 import { useApp } from '../../context/AppContext';
 import type { GdeltEvent } from '../../types';
 import { buildEmbedUrl } from '../../config/live-channels';
@@ -44,7 +47,7 @@ export function MapView() {
   const markersRef = useRef<maplibregl.Marker[]>([]);
   const userMarkerRef = useRef<maplibregl.Marker | null>(null);
   const { state, dispatch } = useApp();
-  const { clusters, selectedCluster } = state;
+  const { clusters, selectedCluster, locationFilter } = state;
   const [mapReady, setMapReady] = useState(false);
   const [conflictEvents, setConflictEvents] = useState<GdeltEvent[]>([]);
   const [eonetEvents, setEonetEvents] = useState<EONETEvent[]>([]);
@@ -52,7 +55,9 @@ export function MapView() {
   const [geoError, setGeoError] = useState('');
   const [userCoords, setUserCoords] = useState<{ lat: number; lng: number } | null>(null);
   const [floatingLocation, setFloatingLocation] = useState<{ name: string; lat: number; lng: number } | null>(null);
-  const [floatingTab, setFloatingTab] = useState<'news' | 'video'>('news');
+  const [floatingTab, setFloatingTab] = useState<'news' | 'video' | 'graph'>('news');
+  const [showAreaGraphInspector, setShowAreaGraphInspector] = useState(false);
+  const [areaGraphFocus, setAreaGraphFocus] = useState<GraphFocusTarget | null>(null);
   const [activeVideoChannel, setActiveVideoChannel] = useState<string | null>(null);
   const [regionChannels, setRegionChannels] = useState<RegionChannel[]>([]);
   const [discoveringChannels, setDiscoveringChannels] = useState(false);
@@ -88,11 +93,27 @@ export function MapView() {
     return merged.slice(0, 6);
   }, [clusters, distanceKm]);
 
+  const areaClusters = useMemo(
+    () => locationFilter ? getLocationStories(locationFilter.lat, locationFilter.lng, locationFilter.name) : [],
+    [getLocationStories, locationFilter],
+  );
+  const { graph: areaGraph } = useEventGraphSubject(areaClusters, { loadHistorical: false });
+  const areaClaims = useMemo(
+    () => areaGraph.claims
+      .filter(claim => claim.claimType !== 'perspective-frame')
+      .slice()
+      .sort((a, b) => b.confidence.overall - a.confidence.overall || b.evidenceIds.length - a.evidenceIds.length)
+      .slice(0, 3),
+    [areaGraph],
+  );
+
   useEffect(() => {
     let cancelled = false;
     if (!floatingLocation) {
       setRegionChannels([]);
       setActiveVideoChannel(null);
+      setShowAreaGraphInspector(false);
+      setAreaGraphFocus(null);
       return;
     }
 
@@ -497,7 +518,12 @@ export function MapView() {
               </span>
             </div>
             <button
-              onClick={() => { setFloatingLocation(null); dispatch({ type: 'SET_LOCATION_FILTER', payload: null }); }}
+              onClick={() => {
+                setFloatingLocation(null);
+                setShowAreaGraphInspector(false);
+                setAreaGraphFocus(null);
+                dispatch({ type: 'SET_LOCATION_FILTER', payload: null });
+              }}
               className="text-dim hover:text-white"
               title="Close — reset feed to global"
             >
@@ -517,6 +543,12 @@ export function MapView() {
               className={`px-2 py-1 text-[10px] font-mono rounded ${floatingTab === 'video' ? 'bg-accent/15 text-accent border border-accent/30' : 'text-dim hover:text-white hover:bg-white/5 border border-transparent'}`}
             >
               Video
+            </button>
+            <button
+              onClick={() => setFloatingTab('graph')}
+              className={`px-2 py-1 text-[10px] font-mono rounded ${floatingTab === 'graph' ? 'bg-accent/15 text-accent border border-accent/30' : 'text-dim hover:text-white hover:bg-white/5 border border-transparent'}`}
+            >
+              Graph
             </button>
           </div>
 
@@ -541,6 +573,96 @@ export function MapView() {
                     </div>
                   </button>
                 ))
+              )}
+            </div>
+          ) : floatingTab === 'graph' ? (
+            <div className="p-2.5 max-h-[260px] overflow-y-auto space-y-3">
+              {areaClusters.length === 0 ? (
+                <div className="text-[10px] text-dim font-mono">
+                  No mapped events yet for this area graph.
+                </div>
+              ) : (
+                <>
+                  <div className="grid grid-cols-2 gap-2">
+                    <div className="rounded border border-border bg-white/[0.03] px-2 py-1.5">
+                      <div className="text-[8px] font-mono uppercase tracking-wider text-dim">Events</div>
+                      <div className="mt-1 text-sm font-semibold text-white">{areaGraph.events.length}</div>
+                    </div>
+                    <div className="rounded border border-border bg-white/[0.03] px-2 py-1.5">
+                      <div className="text-[8px] font-mono uppercase tracking-wider text-dim">Claims</div>
+                      <div className="mt-1 text-sm font-semibold text-white">{areaGraph.claims.length}</div>
+                    </div>
+                    <div className="rounded border border-border bg-white/[0.03] px-2 py-1.5">
+                      <div className="text-[8px] font-mono uppercase tracking-wider text-dim">Evidence</div>
+                      <div className="mt-1 text-sm font-semibold text-white">{areaGraph.evidence.length}</div>
+                    </div>
+                    <div className="rounded border border-border bg-white/[0.03] px-2 py-1.5">
+                      <div className="text-[8px] font-mono uppercase tracking-wider text-dim">Views</div>
+                      <div className="mt-1 text-sm font-semibold text-white">{areaGraph.perspectiveViews.length}</div>
+                    </div>
+                  </div>
+
+                  <div className="rounded border border-border bg-white/[0.02] px-2.5 py-2">
+                    <div className="flex items-center justify-between gap-2 mb-1">
+                      <div className="flex items-center gap-1.5 min-w-0">
+                        <Network size={11} className="text-accent" />
+                        <span className="text-[9px] font-mono uppercase tracking-wider text-accent">Area Graph</span>
+                      </div>
+                      <button
+                        onClick={() => {
+                          setAreaGraphFocus(null);
+                          setShowAreaGraphInspector(true);
+                        }}
+                        className="shrink-0 px-2 py-1 text-[9px] font-mono rounded border border-accent/30 text-accent hover:bg-accent/10 transition-colors"
+                      >
+                        Inspect
+                      </button>
+                    </div>
+                    <p className="text-[10px] text-white/75 leading-relaxed">
+                      Merged graph for {areaClusters.length} nearby clusters around {floatingLocation.name}.
+                    </p>
+                  </div>
+
+                  {areaClaims.length > 0 && (
+                    <div className="space-y-2">
+                      <div className="text-[9px] font-mono uppercase tracking-wider text-dim">Top Claims</div>
+                      {areaClaims.map(claim => (
+                        <button
+                          key={claim.id}
+                          onClick={() => {
+                            setAreaGraphFocus({ type: 'claim', id: claim.id });
+                            setShowAreaGraphInspector(true);
+                          }}
+                          className="w-full text-left rounded border border-border bg-white/[0.02] px-2.5 py-2 hover:border-accent/40 hover:bg-white/[0.04] transition-colors"
+                        >
+                          <div className="flex items-center justify-between gap-2">
+                            <span className="text-[8px] font-mono uppercase tracking-wider text-accent/80">{claim.claimType.replace(/-/g, ' ')}</span>
+                            <span className="text-[8px] font-mono text-dim">{claim.evidenceIds.length} ev</span>
+                          </div>
+                          <p className="mt-1 text-[10px] text-white/80 leading-relaxed line-clamp-3">{claim.text}</p>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+
+                  <div className="space-y-2">
+                    <div className="text-[9px] font-mono uppercase tracking-wider text-dim">Area Events</div>
+                    {areaClusters.slice(0, 4).map(cluster => (
+                      <button
+                        key={cluster.id}
+                        onClick={() => dispatch({ type: 'SELECT_CLUSTER', payload: cluster })}
+                        className="w-full text-left p-2 rounded border border-border hover:border-accent/40 hover:bg-white/5 transition-colors"
+                      >
+                        <div className="text-[8px] text-dim font-mono mb-1 uppercase tracking-wider">
+                          {cluster.category} · {cluster.sourceIds.length} sources
+                        </div>
+                        <div className="text-[10px] text-white leading-snug line-clamp-2">
+                          {cluster.headline}
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                </>
               )}
             </div>
           ) : (
@@ -603,6 +725,19 @@ export function MapView() {
             </div>
           )}
         </div>
+      )}
+
+      {showAreaGraphInspector && floatingLocation && areaClusters.length > 0 && (
+        <EventGraphPanel
+          clusters={areaClusters}
+          initialFocus={areaGraphFocus}
+          title={`${floatingLocation.name} Area Graph`}
+          subtitle="Merged nearby events with shared claims, evidence, and historical context for this selected place."
+          onClose={() => {
+            setShowAreaGraphInspector(false);
+            setAreaGraphFocus(null);
+          }}
+        />
       )}
 
       {/* Locate Me button */}

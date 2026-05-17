@@ -16,6 +16,8 @@
 
 export const config = { runtime: 'edge' };
 
+import { getRequestIntegrationSettings, SETTINGS_ACCESS_CONTROL_HEADERS } from './_lib/request-settings.js';
+
 const YAHOO_BASE    = 'https://query1.finance.yahoo.com/v8/finance/chart';
 const COINGECKO     = 'https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&sparkline=false&price_change_percentage=24h';
 const POLYMARKET    = 'https://gamma-api.polymarket.com/markets?limit=10&active=true&closed=false&tag_slug=geopolitics';
@@ -81,13 +83,22 @@ export default async function handler(req) {
   if (req.method === 'OPTIONS') {
     return new Response(null, {
       status: 204,
-      headers: { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Methods': 'GET, OPTIONS' },
+      headers: {
+        'Access-Control-Allow-Origin': '*',
+        'Access-Control-Allow-Methods': 'GET, OPTIONS',
+        'Access-Control-Allow-Headers': SETTINGS_ACCESS_CONTROL_HEADERS,
+      },
     });
   }
 
   const url  = new URL(req.url);
   const type = url.searchParams.get('type') ?? 'quotes';
-  const cors = { 'Access-Control-Allow-Origin': '*', 'Content-Type': 'application/json' };
+  const settings = getRequestIntegrationSettings(req);
+  const cors = {
+    'Access-Control-Allow-Origin': '*',
+    'Access-Control-Allow-Headers': SETTINGS_ACCESS_CONTROL_HEADERS,
+    'Content-Type': 'application/json',
+  };
 
   try {
     if (type === 'quotes') {
@@ -174,7 +185,7 @@ export default async function handler(req) {
 
     // ── MarketStack: EOD data for one or multiple symbols ─────────────────────
     if (type === 'eod') {
-      const msKey = process.env.MARKETSTACK_API_KEY;
+      const msKey = settings.marketstackKey;
       if (!msKey) return Response.json({ error: 'MarketStack key not configured' }, { status: 503, headers: cors });
 
       const symbolParam = url.searchParams.get('symbols') ?? url.searchParams.get('symbol') ?? 'AAPL';
@@ -193,7 +204,7 @@ export default async function handler(req) {
 
     // ── MarketStack: latest intraday / real-time quote ────────────────────────
     if (type === 'ms_quote') {
-      const msKey = process.env.MARKETSTACK_API_KEY;
+      const msKey = settings.marketstackKey;
       if (!msKey) return Response.json({ error: 'MarketStack key not configured' }, { status: 503, headers: cors });
 
       const symbol = url.searchParams.get('symbol');
@@ -212,7 +223,7 @@ export default async function handler(req) {
 
     // ── MarketStack: FX rates ─────────────────────────────────────────────────
     if (type === 'fx') {
-      const msKey = process.env.MARKETSTACK_API_KEY;
+      const msKey = settings.marketstackKey;
       if (!msKey) return Response.json({ error: 'MarketStack key not configured' }, { status: 503, headers: cors });
 
       const symbols = url.searchParams.get('symbols') ?? FX_SYMBOLS.join(',');
@@ -228,7 +239,7 @@ export default async function handler(req) {
 
     // ── MarketStack: ticker search ────────────────────────────────────────────
     if (type === 'search') {
-      const msKey = process.env.MARKETSTACK_API_KEY;
+      const msKey = settings.marketstackKey;
       if (!msKey) return Response.json({ error: 'MarketStack key not configured' }, { status: 503, headers: cors });
 
       const q = url.searchParams.get('q');

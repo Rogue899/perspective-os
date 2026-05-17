@@ -16,19 +16,21 @@
 
 export const config = { runtime: 'edge' };
 
+import { getRequestIntegrationSettings, SETTINGS_ACCESS_CONTROL_HEADERS } from './_lib/request-settings.js';
+
 const CORS = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Methods': 'GET,POST,OPTIONS',
-  'Access-Control-Allow-Headers': 'Content-Type',
+  'Access-Control-Allow-Headers': SETTINGS_ACCESS_CONTROL_HEADERS,
 };
 
-async function createRedis() {
-  if (!process.env.UPSTASH_REDIS_REST_URL || !process.env.UPSTASH_REDIS_REST_TOKEN) return null;
+async function createRedis(settings) {
+  if (!settings.upstashUrl || !settings.upstashToken) return null;
   try {
     const { Redis } = await import('@upstash/redis');
     return new Redis({
-      url:   process.env.UPSTASH_REDIS_REST_URL,
-      token: process.env.UPSTASH_REDIS_REST_TOKEN,
+      url:   settings.upstashUrl,
+      token: settings.upstashToken,
     });
   } catch {
     return null;
@@ -59,7 +61,8 @@ export default async function handler(req) {
     return new Response(null, { headers: CORS });
   }
 
-  const redis  = await createRedis();
+  const settings = getRequestIntegrationSettings(req);
+  const redis  = await createRedis(settings);
   const url    = new URL(req.url);
   const topic  = (url.searchParams.get('topic') ?? 'all').replace(/[^a-z0-9_-]/gi, '').slice(0, 40);
   const key    = `welford:${topic}`;

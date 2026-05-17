@@ -22,21 +22,23 @@
 export const config = { runtime: 'edge' };
 
 import { normalizeSlug }  from '../_lib/slug.js';
+import { getRequestIntegrationSettings, SETTINGS_ACCESS_CONTROL_HEADERS } from '../_lib/request-settings.js';
 import {
   getTopicGraph,
   setTopicGraph,
   acquireLock,
   releaseLock,
   waitForTopicGraph,
+  setHistoryCacheRedisConfig,
 } from '../_lib/history-cache.js';
-import { checkRateLimit } from '../_lib/history-ratelimit.js';
+import { checkRateLimit, setHistoryRateLimitRedisConfig } from '../_lib/history-ratelimit.js';
 
 // ─── CORS helper (mirrors api/ai.js) ─────────────────────────────────────────
 
 function cors(res) {
   res.headers.set('Access-Control-Allow-Origin',  '*');
   res.headers.set('Access-Control-Allow-Methods', 'POST, OPTIONS');
-  res.headers.set('Access-Control-Allow-Headers', 'Content-Type');
+  res.headers.set('Access-Control-Allow-Headers', SETTINGS_ACCESS_CONTROL_HEADERS);
   return res;
 }
 
@@ -339,6 +341,10 @@ export default async function handler(req) {
   if (req.method !== 'POST') {
     return cors(new Response('Method not allowed', { status: 405 }));
   }
+
+  const settings = getRequestIntegrationSettings(req);
+  setHistoryCacheRedisConfig(settings.upstashUrl, settings.upstashToken);
+  setHistoryRateLimitRedisConfig(settings.upstashUrl, settings.upstashToken);
 
   // Extract client IP
   const ip =

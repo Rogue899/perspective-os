@@ -31,26 +31,49 @@ loadEnvFile('.env.local', true); // .env.local overrides .env
 
 const PORT = 3001;
 
-const ALLOWED_DOMAINS = [
-  'feeds.bbci.co.uk', 'www.aljazeera.com', 'www.france24.com',
-  'rss.dw.com', 'moxie.foxnews.com', 'feeds.reuters.com',
-  'www.rt.com', 'tass.com', 'www.cgtn.com', 'www.scmp.com',
-  'www.arabnews.com', 'www.middleeasteye.net', 'www.haaretz.com',
-  'www.timesofisrael.com', 'www.presstv.ir', 'www.bellingcat.com',
-  'theintercept.com', 'www.thehindu.com', 'nypost.com',
-  'www.jpost.com', 'www.xinhuanet.com', 'english.news.cn',
-  'news.cgtn.com', 'www.alarabiya.net', 'www.reutersagency.com',
-  'news.yahoo.com', 'news.google.com', 'www.theguardian.com',
-  'english.news.cn', 'www.xinhuanet.com', 'www.jpost.com', 'www.alarabiya.net',
-  'english.alarabiya.net', 'www.globaltimes.cn', 'rss.chinadaily.com.cn',
-  'www.channelnewsasia.com', 'www.al-monitor.com', 'feeds.npr.org',
-  'nitter.net', 'www.reddit.com', 'www.mtv.com.lb',
-  'www.whitehouse.gov', 'www.gov.uk',
-  'www.euronews.com', 'www.the961.com',
-  'www.rfi.fr', 'www.spiegel.de', 'feeds.skynews.com', 'www.ansa.it',
-  'kyivindependent.com', 'notesfrompoland.com', 'www.politico.eu', 'euobserver.com',
-  'mg.co.za', 'allafrica.com', 'rsshub.app', 'rsshub.rssforever.com', 'ground.news',
-];
+function readIntegrationHeader(req, name) {
+  const value = req.headers[name];
+  return Array.isArray(value) ? (value[0] ?? '') : (value ?? '');
+}
+
+function getRequestIntegrationSettings(req) {
+  return {
+    geminiKey: readIntegrationHeader(req, 'x-pos-gemini-key') || process.env.GEMINI_API_KEY || process.env.VITE_GEMINI_API_KEY || '',
+    groqKey: readIntegrationHeader(req, 'x-pos-groq-key') || process.env.GROQ_API_KEY || process.env.VITE_GROQ_API_KEY || '',
+    marketstackKey: readIntegrationHeader(req, 'x-pos-marketstack-key') || process.env.MARKETSTACK_API_KEY || '',
+    newsdataKey: readIntegrationHeader(req, 'x-pos-newsdata-key') || process.env.NEWSDATA_API_KEY || process.env.VITE_NEWSDATA_API_KEY || '',
+  };
+}
+
+function loadAllowedDomains() {
+  const manualDomains = [
+    'news.google.com',
+    'nitter.net',
+    'www.reddit.com',
+    'rsshub.app',
+    'rsshub.rssforever.com',
+  ];
+
+  const configPath = resolve(__dir, 'src/config/sources.ts');
+  const domains = new Set(manualDomains);
+
+  if (!existsSync(configPath)) return [...domains];
+
+  const sourceConfig = readFileSync(configPath, 'utf8');
+  const matches = sourceConfig.matchAll(/rss:\s*'\/api\/rss-proxy\?url=(https:\/\/[^']+?)&id=/g);
+
+  for (const match of matches) {
+    try {
+      domains.add(new URL(match[1]).hostname);
+    } catch {
+      // Ignore malformed or non-URL entries.
+    }
+  }
+
+  return [...domains];
+}
+
+const ALLOWED_DOMAINS = loadAllowedDomains();
 
 async function handleRssProxy(req, res, params) {
   const targetUrl = params.get('url');
@@ -115,8 +138,9 @@ async function handleAI(req, res) {
   let parsed;
   try { parsed = JSON.parse(body); } catch { parsed = {}; }
 
-  const GEMINI_KEY = process.env.GEMINI_API_KEY || process.env.VITE_GEMINI_API_KEY;
-  const GROQ_KEY   = process.env.GROQ_API_KEY   || process.env.VITE_GROQ_API_KEY;
+  const settings = getRequestIntegrationSettings(req);
+  const GEMINI_KEY = settings.geminiKey;
+  const GROQ_KEY   = settings.groqKey;
 
   if (!GEMINI_KEY && !GROQ_KEY) {
     // No keys configured — return stub so UI still renders without crashing
@@ -215,8 +239,9 @@ async function fetchYahooQuote(symbol) {
   };
 }
 
-async function handleFinance(_req, res, params) {
+async function handleFinance(req, res, params) {
   const type = params.get('type') || 'quotes';
+  const settings = getRequestIntegrationSettings(req);
   try {
     let data = {};
     if (type === 'crypto') {
@@ -258,7 +283,7 @@ async function handleFinance(_req, res, params) {
       );
       data = { indicators: results.filter(r => r.status === 'fulfilled' && r.value).map(r => r.value) };
     } else if (type === 'fx') {
-      const msKey = process.env.MARKETSTACK_API_KEY;
+      const msKey = settings.marketstackKey;
       if (!msKey) {
         data = { fx: [], disabled: true, reason: 'MARKETSTACK_API_KEY missing' };
       } else {
@@ -270,7 +295,7 @@ async function handleFinance(_req, res, params) {
         data = { fx: json.data ?? [] };
       }
     } else if (type === 'eod') {
-      const msKey = process.env.MARKETSTACK_API_KEY;
+      const msKey = settings.marketstackKey;
       if (!msKey) {
         data = { eod: [], disabled: true, reason: 'MARKETSTACK_API_KEY missing' };
       } else {
@@ -325,7 +350,8 @@ async function handleEmbed(req, res) {
   let parsed;
   try { parsed = JSON.parse(body); } catch { parsed = {}; }
 
-  const GEMINI_KEY = process.env.GEMINI_API_KEY || process.env.VITE_GEMINI_API_KEY;
+  const settings = getRequestIntegrationSettings(req);
+  const GEMINI_KEY = settings.geminiKey;
   if (!GEMINI_KEY) {
     res.writeHead(200, { ...cors(), 'Content-Type': 'application/json' });
     res.end(JSON.stringify({ embedding: [], cached: false }));
@@ -369,8 +395,9 @@ async function handleEonet(_req, res) {
   }
 }
 
-async function handleNewsData(_req, res, params) {
-  const apiKey = process.env.NEWSDATA_API_KEY || process.env.VITE_NEWSDATA_API_KEY;
+async function handleNewsData(req, res, params) {
+  const settings = getRequestIntegrationSettings(req);
+  const apiKey = settings.newsdataKey;
   if (!apiKey) {
     res.writeHead(200, { ...cors(), 'Content-Type': 'application/json' });
     res.end(JSON.stringify({ articles: [], disabled: true, reason: 'NEWSDATA_API_KEY missing' }));
@@ -423,7 +450,7 @@ function cors() {
   return {
     'Access-Control-Allow-Origin':  '*',
     'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-    'Access-Control-Allow-Headers': 'Content-Type',
+    'Access-Control-Allow-Headers': 'Content-Type, x-pos-gemini-key, x-pos-groq-key, x-pos-marketstack-key, x-pos-newsdata-key, x-pos-acled-email, x-pos-acled-password, x-pos-upstash-url, x-pos-upstash-token',
   };
 }
 

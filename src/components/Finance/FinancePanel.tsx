@@ -13,6 +13,7 @@
 
 import { useEffect, useState, useCallback, useRef } from 'react';
 import { useApp } from '../../context/AppContext';
+import { fetchWithSettings } from '../../services/integration-settings';
 import { TrendingUp, TrendingDown, Minus, RefreshCw, AlertTriangle, BarChart2, ExternalLink } from 'lucide-react';
 import {
   AreaChart, Area, LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid,
@@ -159,9 +160,9 @@ export function FinancePanel() {
     setLoading(true);
     try {
       const [qRes, cRes, pRes] = await Promise.allSettled([
-        fetch('/api/finance?type=quotes').then(r => r.json()),
-        fetch('/api/finance?type=crypto&ids=bitcoin,ethereum,solana,ripple').then(r => r.json()),
-        fetch('/api/finance?type=polymarket').then(r => r.json()),
+        fetchWithSettings('/api/finance?type=quotes').then(r => r.json()),
+        fetchWithSettings('/api/finance?type=crypto&ids=bitcoin,ethereum,solana,ripple').then(r => r.json()),
+        fetchWithSettings('/api/finance?type=polymarket').then(r => r.json()),
       ]);
       if (qRes.status === 'fulfilled') {
         const qs: Quote[] = qRes.value.quotes ?? [];
@@ -200,7 +201,7 @@ export function FinancePanel() {
 
     setEodLoading(true);
     try {
-      const res = await fetch(`/api/finance?type=eod&symbols=${EOD_SYMBOLS}&limit=2`);
+      const res = await fetchWithSettings(`/api/finance?type=eod&symbols=${EOD_SYMBOLS}&limit=2`);
       if (!res.ok) throw new Error(`EOD ${res.status}`);
       const data = await res.json();
       const entries: EodEntry[] = data.eod ?? [];
@@ -227,7 +228,7 @@ export function FinancePanel() {
 
   // Fetch FX rates once on mount
   useEffect(() => {
-    fetch('/api/finance?type=fx')
+    fetchWithSettings('/api/finance?type=fx')
       .then(r => r.json())
       .then(data => setFxData(data.fx ?? []))
       .catch(() => {});
@@ -235,7 +236,7 @@ export function FinancePanel() {
 
   // Fetch FRED economic indicators once on mount (cached 6h server-side)
   useEffect(() => {
-    fetch('/api/finance?type=fred_all')
+    fetchWithSettings('/api/finance?type=fred_all')
       .then(r => r.json())
       .then(data => setFredIndicators(data.indicators ?? []))
       .catch(() => {});
@@ -275,7 +276,7 @@ Respond ONLY with valid JSON (no markdown):
 Analyze 3-5 sectors. Be specific about which stocks/commodities/currencies might move.
 IMPORTANT: End with a disclaimer that this is AI analysis only, not financial advice.`;
 
-      const res = await fetch('/api/ai', {
+      const res = await fetchWithSettings('/api/ai', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -451,7 +452,7 @@ IMPORTANT: End with a disclaimer that this is AI analysis only, not financial ad
               {eodLoading && eodData.length === 0 ? (
                 <div className="text-[10px] text-dim font-mono">Fetching EOD data…</div>
               ) : eodData.length === 0 ? (
-                <div className="text-[10px] text-dim font-mono">No data — check MARKETSTACK_API_KEY in .env</div>
+                <div className="text-[10px] text-dim font-mono">No data — add MarketStack in Settings or server env</div>
               ) : (
                 <div className="grid grid-cols-2 lg:grid-cols-3 gap-2">
                   {eodData.map(e => {

@@ -1,4 +1,5 @@
 import type { RawArticle, EventCategory } from '../types';
+import { fetchWithSettings } from './integration-settings';
 
 function normalizeSourceId(sourceName: string): string {
   return `newsdata-${sourceName.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '') || 'source'}`;
@@ -13,7 +14,7 @@ export async function fetchNewsDataArticles(params: {
   const size = Math.min(Math.max(params.size ?? 20, 1), 50);
 
   try {
-    const res = await fetch(`/api/newsdata?topic=${encodeURIComponent(q)}&language=en&size=${size}`, {
+    const res = await fetchWithSettings(`/api/newsdata?topic=${encodeURIComponent(q)}&language=en&size=${size}`, {
       signal: AbortSignal.timeout(9000),
     });
     if (!res.ok) return [];

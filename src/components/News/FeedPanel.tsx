@@ -10,6 +10,7 @@ import { detectUserLocation } from '../../services/geo';
 import type { GeoContext } from '../../services/geo';
 import { getAllCircuitStates, type CircuitState } from '../../services/circuit-breaker';
 import { generateKeywords } from '../../services/ai';
+import { fetchWithSettings } from '../../services/integration-settings';
 import { Filter, Wifi, WifiOff, MapPin, X, Zap, AlertTriangle, Sparkles, Radio, LayoutList, LayoutGrid, Globe, MessageCircle, Flame } from 'lucide-react';
 import type { EventCategory } from '../../types';
 
@@ -209,7 +210,7 @@ export function FeedPanel({ onRefresh, defaultGrid, hideGridControls }: { onRefr
           const tones = raw.filter(a => typeof a.tone === 'number').map(a => a.tone as number);
           if (tones.length > 0) {
             const currentAvg = tones.reduce((s, t) => s + t, 0) / tones.length;
-            fetch('/api/tone-baseline', {
+            fetchWithSettings('/api/tone-baseline', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({ topic: gdeltTopic, tones }),
@@ -366,7 +367,7 @@ export function FeedPanel({ onRefresh, defaultGrid, hideGridControls }: { onRefr
           .map(c => `- ${c.headline} (${c.category}, ${c.severity}, ${c.sourceIds.length} sources)`)
           .join('\n');
         const prompt = `You are a geopolitical news analyst. User question: "${topic}"\n\nCurrent dashboard headlines:\n${context || '- no headlines available'}\n\nAnswer in 4-6 short bullet points with: (1) what is happening now, (2) key actors, (3) uncertainty/verification notes. Keep under 160 words.`;
-        const res = await fetch('/api/ai', {
+        const res = await fetchWithSettings('/api/ai', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({

@@ -10,17 +10,19 @@
 
 export const config = { runtime: 'edge' };
 
+import { getRequestIntegrationSettings, SETTINGS_ACCESS_CONTROL_HEADERS } from './_lib/request-settings.js';
+
 // Rate limiter state (per-instance, resets on cold start)
 // For proper per-IP limiting, use Upstash Rate Limit
 const REQUEST_COUNTS = new Map();
 
-async function createRedis() {
-  if (!process.env.UPSTASH_REDIS_REST_URL || !process.env.UPSTASH_REDIS_REST_TOKEN) return null;
+async function createRedis(settings) {
+  if (!settings.upstashUrl || !settings.upstashToken) return null;
   try {
     const { Redis } = await import('@upstash/redis');
     return new Redis({
-      url:   process.env.UPSTASH_REDIS_REST_URL,
-      token: process.env.UPSTASH_REDIS_REST_TOKEN,
+      url:   settings.upstashUrl,
+      token: settings.upstashToken,
     });
   } catch {
     console.warn('[AI] @upstash/redis not available, running without cache');
@@ -95,9 +97,10 @@ export default async function handler(req) {
 
   if (!prompt) return cors(new Response('Missing prompt', { status: 400 }));
 
-  const geminiKey = process.env.GEMINI_API_KEY;
-  const groqKey   = process.env.GROQ_API_KEY;
-  const redis     = await createRedis();
+  const settings = getRequestIntegrationSettings(req);
+  const geminiKey = settings.geminiKey;
+  const groqKey   = settings.groqKey;
+  const redis     = await createRedis(settings);
 
   // ── Redis cache lookup ─────────────────────────────────────────────────────
   const redisKey = cacheKey ?? `ai:${hashString(prompt.slice(0, 200))}`;
@@ -170,7 +173,7 @@ export default async function handler(req) {
 function cors(res) {
   res.headers.set('Access-Control-Allow-Origin',  '*');
   res.headers.set('Access-Control-Allow-Methods', 'POST, OPTIONS');
-  res.headers.set('Access-Control-Allow-Headers', 'Content-Type');
+  res.headers.set('Access-Control-Allow-Headers', SETTINGS_ACCESS_CONTROL_HEADERS);
   return res;
 }
 

@@ -15,18 +15,30 @@
 const _limiters = new Map();
 let _redis = null;
 let _tried = false;
+let _overrideUrl = '';
+let _overrideToken = '';
+
+export function setHistoryRateLimitRedisConfig(url = '', token = '') {
+  _overrideUrl = url;
+  _overrideToken = token;
+  _redis = null;
+  _tried = false;
+  _limiters.clear();
+}
 
 async function getRedis() {
   if (_tried) return _redis;
   _tried = true;
-  if (!process.env.UPSTASH_REDIS_REST_URL || !process.env.UPSTASH_REDIS_REST_TOKEN) {
+  const url = _overrideUrl || process.env.UPSTASH_REDIS_REST_URL;
+  const token = _overrideToken || process.env.UPSTASH_REDIS_REST_TOKEN;
+  if (!url || !token) {
     return null;
   }
   try {
     const { Redis } = await import('@upstash/redis');
     _redis = new Redis({
-      url:   process.env.UPSTASH_REDIS_REST_URL,
-      token: process.env.UPSTASH_REDIS_REST_TOKEN,
+      url,
+      token,
     });
   } catch {
     console.warn('[history-ratelimit] @upstash/redis not available');

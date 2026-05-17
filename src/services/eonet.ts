@@ -4,6 +4,8 @@
  * https://eonet.gsfc.nasa.gov/docs/v3
  */
 
+import { fetchWithSettings } from './integration-settings';
+
 export interface EONETEvent {
   id: string;
   title: string;
@@ -43,7 +45,7 @@ export const EONET_CATEGORY_ICON: Record<string, string> = {
 
 export async function fetchEONETEvents(): Promise<EONETEvent[]> {
   try {
-    const res = await fetch('/api/eonet');
+    const res = await fetchWithSettings('/api/eonet');
     if (!res.ok) throw new Error(`EONET ${res.status}`);
     const data = await res.json();
 

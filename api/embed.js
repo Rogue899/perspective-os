@@ -7,6 +7,8 @@
 
 export const config = { runtime: 'edge' };
 
+import { getRequestIntegrationSettings, SETTINGS_ACCESS_CONTROL_HEADERS } from './_lib/request-settings.js';
+
 async function getRedis(url, token) {
   try {
     const { Redis } = await import('@upstash/redis');
@@ -22,24 +24,24 @@ export default async function handler(req) {
   const { text } = await req.json().catch(() => ({}));
   if (!text) return Response.json({ error: 'missing text' }, { status: 400 });
 
-  const { GEMINI_API_KEY, UPSTASH_REDIS_REST_URL, UPSTASH_REDIS_REST_TOKEN } = process.env;
-  if (!GEMINI_API_KEY) return Response.json({ embedding: [] });
+  const settings = getRequestIntegrationSettings(req);
+  if (!settings.geminiKey) return withCors(Response.json({ embedding: [] }));
 
   // Cache by first 100 chars of text
   const cacheKey = `embed:${text.slice(0, 100)}`;
   let redis = null;
 
-  if (UPSTASH_REDIS_REST_URL && UPSTASH_REDIS_REST_TOKEN) {
-    redis = await getRedis(UPSTASH_REDIS_REST_URL, UPSTASH_REDIS_REST_TOKEN);
+  if (settings.upstashUrl && settings.upstashToken) {
+    redis = await getRedis(settings.upstashUrl, settings.upstashToken);
     try {
       const cached = await redis.get(cacheKey);
-      if (cached) return Response.json({ embedding: cached, cached: true });
+      if (cached) return withCors(Response.json({ embedding: cached, cached: true }));
     } catch {}
   }
 
   try {
     const res = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/text-embedding-004:embedContent?key=${GEMINI_API_KEY}`,
+      `https://generativelanguage.googleapis.com/v1beta/models/text-embedding-004:embedContent?key=${settings.geminiKey}`,
       {
         method:  'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -55,10 +57,15 @@ export default async function handler(req) {
       try { await redis.set(cacheKey, embedding, { ex: 3600 }); } catch {}
     }
 
-    const response = Response.json({ embedding, cached: false });
-    response.headers.set('Access-Control-Allow-Origin', '*');
-    return response;
+    return withCors(Response.json({ embedding, cached: false }));
   } catch (err) {
-    return Response.json({ error: String(err), embedding: [] }, { status: 502 });
+    return withCors(Response.json({ error: String(err), embedding: [] }, { status: 502 }));
   }
+}
+
+function withCors(res) {
+  res.headers.set('Access-Control-Allow-Origin', '*');
+  res.headers.set('Access-Control-Allow-Methods', 'POST, OPTIONS');
+  res.headers.set('Access-Control-Allow-Headers', SETTINGS_ACCESS_CONTROL_HEADERS);
+  return res;
 }
